@@ -13,10 +13,12 @@
               
 fpdtype_t stemp[${nvars}] = {};
 
-for(int i =0; i<${nvmax}; i++)
+for(int i=0; i<${nvmax}; i++)
 {
-    fpdtype_t eloc[] = ${pyfr.array(acteddy[i][{j}], j=(0, ndims))};
+    fpdtype_t eps = acteddy[i][${ndims+1}];
+    //if(eps==0) break;
     fpdtype_t rad = acteddy[i][${ndims}];
+    fpdtype_t eloc[] = ${pyfr.array(acteddy[i][{j}], j=(0, ndims))};
     fpdtype_t eps = acteddy[i][${ndims+1}];
     ${pyfr.expand('vort', 'rad', 'eps', 'eloc', 'ploc', 'stemp')};
 }              
