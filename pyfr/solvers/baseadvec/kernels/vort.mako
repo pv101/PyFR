@@ -9,6 +9,6 @@
     % endfor
     stemp *= r2 < rad*rad ? 1.0 : 0.0;
     % for i in range(nvars):
-        s[${i}] = stemp;
+        s[${i}] += stemp;
     % endfor
 </%pyfr:macro>
