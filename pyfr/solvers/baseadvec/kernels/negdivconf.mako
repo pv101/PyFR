@@ -16,7 +16,7 @@
 
 fpdtype_t stemp[${nvars}];
 % for i in range(nvmax):
-    fpdtype_t eloc[] = ${pyfr.array('acteddy[${i}][${j}]', j=(0, ndims-1))};
+    fpdtype_t eloc[] = ${pyfr.array(f'acteddy[{i}][{{j}}]', j=(0, ndims))};
     ${pyfr.expand('vort', acteddy[${i}][${ndims}], acteddy[${i}][${ndims+1}], eloc, ploc, 'stemp')};
     % for j in range(nvars):
         tdivtconf[${j}] += stemp[${j}];
