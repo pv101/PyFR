@@ -50,6 +50,10 @@ class BaseElements:
         self.nfacefpts = basis.nfacefpts
         self.nmpts = basis.nmpts
 
+    #set neg div con f external
+    
+    #another method to add an array of module path and macro names and arguements macro into neg div con f
+    
     def pri_to_con(pris, cfg):
         pass
 
