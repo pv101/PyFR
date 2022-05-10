@@ -10,16 +10,19 @@
               u='in fpdtype_t[${str(nvars)}]'
               acteddy='in broadcast-col fpdtype_t[${str(nvmax)}][${str(nvpar)}]'
               rcpdjac='in fpdtype_t'>
+              
+fpdtype_t stemp[${nvars}] = {};
+
+for(int i =0; i<${nvmax}; i++)
+{
+    fpdtype_t eloc[] = ${pyfr.array(acteddy[i][{j}], j=(0, ndims))};
+    fpdtype_t rad = acteddy[i][${ndims}];
+    fpdtype_t eps = acteddy[i][${ndims+1}];
+    ${pyfr.expand('vort', 'rad', 'eps', 'eloc', 'ploc', 'stemp')};
+}              
+                         
 % for i, ex in enumerate(srcex):
-    tdivtconf[${i}] = -rcpdjac*tdivtconf[${i}] + ${ex};
+    tdivtconf[${i}] = -rcpdjac*tdivtconf[${i}] + ${ex} + stemp[${i}];
 % endfor
 
-fpdtype_t stemp[${nvars}];
-% for i in range(nvmax):
-    fpdtype_t eloc[] = ${pyfr.array(f'acteddy[{i}][{{j}}]', j=(0, ndims))};
-    ${pyfr.expand('vort', acteddy[${i}][${ndims}], acteddy[${i}][${ndims+1}], eloc, ploc, 'stemp')};
-    % for j in range(nvars):
-        tdivtconf[${j}] += stemp[${j}];
-    % endfor
-% endfor
 </%pyfr:kernel>
