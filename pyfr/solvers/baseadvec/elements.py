@@ -33,15 +33,18 @@ class BaseAdvectionElements(BaseElements):
         return bufs
 
     
-    
-    
-    
     def add_source_macro(self, mod, name, tplargs):
-        self._srctplargs['srcmacros'].append((mod, name))
+        for m, n in self._srctplargs['srcmacros']:
+            if m == mod or n == name:
+                raise RuntimeError
+                
         for k, v in tplargs.items():
             if k in self._srctplargs and self._srctplargs(k) != v:
                 raise RuntimeError
+                
+        self._srctplargs['srcmacros'].append((mod, name))        
         self._srctplargs |= tplargs
+    
     
     # set external method
     def _set_external(self, name, spec, value=None):
@@ -49,9 +52,7 @@ class BaseAdvectionElements(BaseElements):
 
         if value is not None:
             self._external_vals[name] = value
-    
-  
-
+            
 
     def set_backend(self, *args, **kwargs):
         super().set_backend(*args, **kwargs)
