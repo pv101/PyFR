@@ -25,6 +25,10 @@ class BaseStdIntegrator(BaseCommon, BaseIntegrator):
         # Construct the relevant system
         self.system = systemcls(backend, rallocs, mesh, initsoln,
                                 nregs=self.nregs, cfg=cfg)
+        
+        # add special active plugin here
+        
+        self.system.commit()
 
         # Register index list and current index
         self._regidx = list(range(self.nregs))
