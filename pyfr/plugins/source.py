@@ -13,7 +13,7 @@ class Source(BasePlugin):
         super().__init__(intg, cfgsect, suffix)
 
         for etype, eles in intg.system.ele_map.items():
-            eles.add_source_macro('pyfr.plugins.kernels.source','source',{})
+            eles.add_source_macro('pyfr.plugins.kernels.source','source',{'nvmax':0.0})
 
     def __call__(self, intg):
         pass
