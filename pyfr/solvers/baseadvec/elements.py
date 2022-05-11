@@ -5,6 +5,21 @@ from pyfr.solvers.base import BaseElements
 
 
 class BaseAdvectionElements(BaseElements):
+    def __init__(self, *kargs, **kwargs):
+        super().__init__(*kargs, **kwargs)
+        
+        # Global kernel arguments
+        self._external_args = {}
+        self._external_vals = {}
+        
+        # Source term kernel arguments
+        self._srctplargs = {
+            'ndims': self.ndims,
+            'nvars': self.nvars,
+            'srcex': self._src_exprs,
+            'srcmacros': []
+        }
+        
     @property
     def _scratch_bufs(self):
         if 'flux' in self.antialias:
@@ -16,6 +31,27 @@ class BaseAdvectionElements(BaseElements):
             bufs |= {'scal_upts_cpy'}
 
         return bufs
+
+    
+    
+    
+    
+    def add_source_macro(self, mod, name, tplargs):
+        self._srctplargs['srcmacros'].append((mod, name))
+        for k, v in tplargs.items():
+            if k in self._srctplargs and self._srctplargs(k) != v:
+                raise RuntimeError
+        self._srctplargs |= tplargs
+    
+    # set external method
+    def _set_external(self, name, spec, value=None):
+        self._external_args[name] = spec
+
+        if value is not None:
+            self._external_vals[name] = value
+    
+  
+
 
     def set_backend(self, *args, **kwargs):
         super().set_backend(*args, **kwargs)
@@ -34,12 +70,7 @@ class BaseAdvectionElements(BaseElements):
         plocsrc = self._ploc_in_src_exprs
         solnsrc = self._soln_in_src_exprs
 
-        # Source term kernel arguments
-        srctplargs = {
-            'ndims': self.ndims,
-            'nvars': self.nvars,
-            'srcex': self._src_exprs
-        }
+        
 
         # Interpolation from elemental points
         kernels['disu'] = lambda uin: self._be.kernel(
@@ -81,9 +112,10 @@ class BaseAdvectionElements(BaseElements):
             )
 
         kernels['negdivconf'] = lambda fout: self._be.kernel(
-            'negdivconf', tplargs=srctplargs,
-            dims=[self.nupts, self.neles], tdivtconf=self.scal_upts[fout],
-            rcpdjac=self.rcpdjac_at('upts'), ploc=plocupts, u=solnupts
+            'negdivconf', tplargs=self._srctplargs,
+            dims=[self.nupts, self.neles], extrns=self._external_args,
+            tdivtconf=self.scal_upts[fout], rcpdjac=self.rcpdjac_at('upts'),
+            ploc=plocupts, u=solnupts, **self._external_vals 
         )
 
         # In-place solution filter
