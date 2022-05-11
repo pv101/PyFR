@@ -3,6 +3,6 @@
 
 <%pyfr:macro name='source' params='t, u, ploc, src'>
   % for i in range(nvars):
-    src[$i] += nvmax;
+    src[${i}] += ${nvmax};
   % endfor
 </%pyfr:macro>

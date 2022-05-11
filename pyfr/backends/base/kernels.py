@@ -63,6 +63,10 @@ class BasePointwiseKernelProvider(BaseKernelProvider):
         tpl = self.backend.lookup.get_template(mod)
         src = tpl.render(**tplargs)
         src = re.sub(r'\n\n+', r'\n\n', src)
+        
+        print('-'*40)
+        print(src)
+        print('-'*40)
 
         # Check the kernel exists in the template
         if name not in argspecs:

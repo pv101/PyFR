@@ -63,7 +63,7 @@ class BaseSystem:
         # Queue
         self._queue = backend.queue()
 
-   def commit(self):     
+    def commit(self):     
         # Prepare the kernels and any associated MPI requests
         self._gen_kernels(self.nregs, self.ele_map.values(), self._int_inters, self._mpi_inters, self._bc_inters)
         self._gen_mpireqs(self._mpi_inters)
