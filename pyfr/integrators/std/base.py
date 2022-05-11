@@ -28,6 +28,10 @@ class BaseStdIntegrator(BaseCommon, BaseIntegrator):
         
         # add special active plugin here
         
+        from pyfr.plugins.source import Source
+        
+        self.source = Source(self,'','')
+        
         self.system.commit()
 
         # Register index list and current index
