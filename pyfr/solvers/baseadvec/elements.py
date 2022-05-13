@@ -33,13 +33,13 @@ class BaseAdvectionElements(BaseElements):
         return bufs
 
     
-    def add_source_macro(self, mod, name, tplargs):
+    def add_src_macro(self, mod, name, tplargs):
         for m, n in self._srctplargs['srcmacros']:
             if m == mod or n == name:
                 raise RuntimeError
                 
         for k, v in tplargs.items():
-            if k in self._srctplargs and self._srctplargs(k) != v:
+            if k in self._srctplargs and self._srctplargs[k] != v:
                 raise RuntimeError
                 
         self._srctplargs['srcmacros'].append((mod, name))        
