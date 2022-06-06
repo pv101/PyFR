@@ -40,7 +40,8 @@ class BaseAdvectionElements(BaseElements):
                 
         for k, v in tplargs.items():
             if k in self._srctplargs and self._srctplargs[k] != v:
-                raise RuntimeError
+            	print(k)
+            	raise RuntimeError
                 
         self._srctplargs['srcmacros'].append((mod, name))        
         self._srctplargs |= tplargs
@@ -104,7 +105,7 @@ class BaseAdvectionElements(BaseElements):
         )
 
         # Transformed to physical divergence kernel + source term
-        plocupts = self.ploc_at('upts') if plocsrc else None
+        plocupts = self.ploc_at('upts')
         solnupts = self._scal_upts_cpy if solnsrc else None
 
         if solnsrc:

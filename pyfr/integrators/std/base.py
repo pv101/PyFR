@@ -28,10 +28,10 @@ class BaseStdIntegrator(BaseCommon, BaseIntegrator):
         
         # add special active plugin here
         
-        from pyfr.plugins.source import Source
+        #from pyfr.plugins.source import Source
         from pyfr.plugins.turbulence import Turbulence
         
-        self.source = Source(self,'','')
+        #self.source = Source(self,'','')
         self.turbulence = Turbulence(self,'','')
         
         self.system.commit()
