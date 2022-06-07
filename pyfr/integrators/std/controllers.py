@@ -44,6 +44,8 @@ class BaseStdController(BaseStdIntegrator):
         # Fire off any event handlers
         for csh in self.completed_step_handlers:
             csh(self)
+            
+        self.turbulence(self)
 
         # Abort if plugins request it
         self._check_abort()
