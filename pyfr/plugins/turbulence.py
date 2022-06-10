@@ -13,13 +13,13 @@ class Turbulence(BasePlugin):
         super().__init__(intg, cfgsect, suffix)
         
         self.nvmax = nvmax = 1
-        self.nparams = nparams = 5
+        self.nparams = nparams = 6
         
         self.acteddy = acteddy = {}
         self.neles = neles = {}
         
         self.vorts = []
-        self.vorts.append({'xinit': -5.0, 'yinit': -5.0, 'x': 0.0, 'eps': 0.1, 'ts': 0.0, 'te': 50.0})
+        self.vorts.append({'xinit': 0.3, 'yinit': 0.5, 'zinit': 0.5, 'x': 0.0, 'eps': 0.01, 'ts': 0.0, 'te': 50.0})
         
         #self.vorts.append({'xinit': -2.0, 'yinit': -3.0, 'x': 0.0, 'eps': 0.1})
         #self.vorts.append({'xinit': -3.0, 'yinit': 4.0, 'x': 0.0, 'eps': 0.1})
@@ -31,7 +31,7 @@ class Turbulence(BasePlugin):
         #self.vorts.append({'xinit': -3.0, 'yinit': -4.0, 'x': 0.0, 'eps': 0.1})
         #self.vorts.append({'xinit': -2.0, 'yinit': 5.0, 'x': 0.0, 'eps': 0.1})
         #self.vorts.append({'x': -3.0, 'y': -3.0, 'eps': 1.0})
-        self.vortrad = vortrad = 1.0
+        self.vortrad = vortrad = 0.05
         
         for etype, eles in intg.system.ele_map.items():
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence', {'nvmax': nvmax, 'vortrad': vortrad})
@@ -54,7 +54,7 @@ class Turbulence(BasePlugin):
     def __call__(self, intg):
         tcurr = intg.tcurr
         for vort in self.vorts:
-            vort['x'] = vort['xinit']+0.1*tcurr
+            vort['x'] = vort['xinit']+0.5*tcurr
 
         for etype, neles in self.neles.items():
     	    temp = np.zeros((self.nvmax, self.nparams, neles))
@@ -62,8 +62,9 @@ class Turbulence(BasePlugin):
     	        for vortid, vort in enumerate(self.vorts):
     	            temp[vortid,0,eid]=vort['x']
     	            temp[vortid,1,eid]=vort['yinit']
-    	            temp[vortid,2,eid]=vort['eps']
-    	            temp[vortid,3,eid]=vort['ts']
-    	            temp[vortid,4,eid]=vort['te']
+    	            temp[vortid,2,eid]=vort['zinit']
+    	            temp[vortid,3,eid]=vort['eps']
+    	            temp[vortid,4,eid]=vort['ts']
+    	            temp[vortid,5,eid]=vort['te']
     	    self.acteddy[etype].set(temp)
     	    
