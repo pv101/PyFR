@@ -24,7 +24,7 @@ class Turbulence(BasePlugin):
         self.zmin  =0.0
         self.zmax = 1.0
         
-        self.nvmax = nvmax = 1
+        self.nvmax = nvmax = 6
         self.nparams = nparams = 7
         
         self.acteddy = acteddy = {}
@@ -33,10 +33,15 @@ class Turbulence(BasePlugin):
         self.vorts = []
         eles = []
         
-        self.vortrad = vortrad = 0.05
+        self.vortrad = vortrad = 0.04
         
         # add a single vortex
-        self.vorts.append({'xinit': 0.3, 'yinit': 0.5, 'zinit': 0.5, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
+        self.vorts.append({'xinit': 0.3, 'yinit': 0.5, 'zinit': 0.3, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
+        self.vorts.append({'xinit': 0.3, 'yinit': 0.7, 'zinit': 0.4, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
+        self.vorts.append({'xinit': 0.3, 'yinit': 0.1, 'zinit': 0.6, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
+        self.vorts.append({'xinit': 0.3, 'yinit': 0.2, 'zinit': 0.1, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
+        self.vorts.append({'xinit': 0.3, 'yinit': 0.3, 'zinit': 0.9, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
+        self.vorts.append({'xinit': 0.3, 'yinit': 0.2, 'zinit': 0.3, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
         
         # add elements to vortices
         for vort in self.vorts:
