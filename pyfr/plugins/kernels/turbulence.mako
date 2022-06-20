@@ -20,8 +20,9 @@
         % for i in range(ndims):
             r2 += (pos[${i}]-ploc[${i}])*(pos[${i}]-ploc[${i}]);
         % endfor
-        
+
         src[0] += r2 < rad*rad ? acteddy[${j}][4] : 0.0;
+        
         % for i in range(ndims):
             src[${i+1}] += r2 < rad*rad ? acteddy[${j}][4]*(pos[${i}]-ploc[${i}]) : 0.0;
         % endfor
