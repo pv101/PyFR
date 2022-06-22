@@ -9,6 +9,7 @@ from collections import OrderedDict
 from pyfr.plugins.base import BasePlugin
 from pyfr.regions import BoxRegion
 from pyfr.mpiutil import get_comm_rank_root
+from mpi4py import MPI
 
 class Turbulence(BasePlugin):
     name = 'turbulence'
@@ -18,7 +19,7 @@ class Turbulence(BasePlugin):
     def __init__(self, intg, cfgsect, suffix):
         super().__init__(intg, cfgsect, suffix)
         
-        _, self.rank, self.root = get_comm_rank_root()
+        self.comm, self.rank, self.root = get_comm_rank_root()
         
         
         self.mesh = intg.system.ele_map.items()
@@ -30,7 +31,7 @@ class Turbulence(BasePlugin):
         
         self.xvel = xvel = 0.5
         
-        self.nvorts = 3
+        self.nvorts = 30
         
         # the box
         self.xmin = 0.25
@@ -167,10 +168,10 @@ class Turbulence(BasePlugin):
                                     
     def __call__(self, intg):
         tcurr = intg.tcurr
-        
+        gmin = 0
         breaketype = None
         breakeid = None
-        breaktime = None
+        breaktime = []
         #print(f"Hello, {tcurr}. You are 1.")
         if tcurr >= self.tnext:
         
@@ -198,16 +199,19 @@ class Turbulence(BasePlugin):
         	                print(ctemp[eid])
         	                print(etype)
         	                print(eid)
-        	                print(act['ts'])
+        	                #print(act['ts'])
         	                breaketype = etype
         	                breakeid = eid
-        	                breaktime = act['ts'] #?
+        	                breaktime.append(act['ts']) #?
         	                break
                     elif act['action'] == 'dead':
     	                vcid = act['vcid']
     	                vid = act['vid']
     	                self.remove_vort_from_chain(intg, vcid, vid)
-                self.acteddy[etype].set(temp)         
+                self.acteddy[etype].set(temp)
+                print(f'rank={self.rank} and min = {min(breaktime)}')
+                gmin = self.comm.allreduce(min(breaktime), op=MPI.MIN)
+                print(f'rank={self.rank} and globalmin = {gmin}')         
         	            
         
         
@@ -247,5 +251,5 @@ class Turbulence(BasePlugin):
         	                
         	#    self.acteddy[etype].set(temp)
         
-        self.tnext += self.twin
+            self.tnext = gmin
     	    
