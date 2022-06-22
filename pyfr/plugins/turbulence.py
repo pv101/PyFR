@@ -21,6 +21,7 @@ class Turbulence(BasePlugin):
         
         self.comm, self.rank, self.root = get_comm_rank_root()
         
+        self.buffloc = {}
         
         self.mesh = intg.system.ele_map.items()
         
@@ -31,7 +32,7 @@ class Turbulence(BasePlugin):
         
         self.xvel = xvel = 0.5
         
-        self.nvorts = 30
+        self.nvorts = 15
         
         # the box
         self.xmin = 0.25
@@ -65,7 +66,7 @@ class Turbulence(BasePlugin):
             pass
         else:
             for i in range(self.nvorts):
-                self.make_vort_chain(intg, 0, i, 3)
+                self.make_vort_chain(intg, 0, i, 2)
 
         # add macro and external data
         for etype, eles in intg.system.ele_map.items():
@@ -88,16 +89,16 @@ class Turbulence(BasePlugin):
         for i in range(n):
             xyz = np.random.uniform(0, 1, 3)
 
-            print(xyz)
+            #print(xyz)
             
             xinit = (self.xmin + self.vortrad) + (self.xmax-self.xmin-2*self.vortrad)*xyz[0]
             yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
             zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
             
-            print(f'rank={self.rank}, seed={seed}, x={xinit}, y={yinit}, z={zinit}')
+            #print(f'rank={self.rank}, seed={seed}, x={xinit}, y={yinit}, z={zinit}')
             
             tdead = t + (self.xmax-xinit-self.vortrad)/self.xvel
-            print(tdead)
+            #print(tdead)
             
             vid = uuid.uuid1()
             vort = {'killcount': 0, 'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
@@ -113,14 +114,14 @@ class Turbulence(BasePlugin):
         #print(self.vorts[vcid][vid]['killcount'])
         # if all the element types are done with it
         if self.vorts[vcid][vid]['killcount'] == self.n_ele_types:
-            print(f"Killing {vid} from chain {vcid}.")
+            #print(f"Killing {vid} from chain {vcid}.")
             del self.vorts[vcid][vid] # delete
-            print(self.vorts[vcid])
+            #print(self.vorts[vcid])
             # then add one to end of the chain
             t = self.vorts[vcid][next(reversed(self.vorts[vcid]))]['tdead']
             seed = int(t*10000)
             
-            print(f'vcid={vcid}, seed={t}')
+            #print(f'vcid={vcid}, seed={t}')
             np.random.seed(seed)
             xyz = np.random.uniform(0, 1, 3)
             
@@ -128,7 +129,7 @@ class Turbulence(BasePlugin):
             yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
             zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
             
-            print(f'x={xinit}, y={yinit}, z={zinit}')
+            #print(f'x={xinit}, y={yinit}, z={zinit}')
             
             tdead = t + (self.xmax-xinit-self.vortrad)/self.xvel
             
@@ -137,7 +138,28 @@ class Turbulence(BasePlugin):
             vort = {'killcount': 0, 'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
             self.vorts[vcid][vid]=vort
             self.vort_to_buffer(intg, vort)
-             
+            
+    def add_vort_to_chain(self, intg, vcid):
+        t = self.vorts[vcid][next(reversed(self.vorts[vcid]))]['tdead']
+        seed = int(t*10000)
+        
+        np.random.seed(seed)
+        xyz = np.random.uniform(0, 1, 3)
+        
+        xinit = self.xmin + self.vortrad
+        yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
+        zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
+        
+        #print(f'x={xinit}, y={yinit}, z={zinit}')
+        
+        tdead = t + (self.xmax-xinit-self.vortrad)/self.xvel
+        
+        vid = uuid.uuid1()
+        
+        vort = {'killcount': 0, 'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
+        self.vorts[vcid][vid]=vort
+        self.vort_to_buffer(intg, vort)
+       
     def vort_to_buffer(self, intg, vort):
         for etype, eles in self.mesh:
 
@@ -163,7 +185,7 @@ class Turbulence(BasePlugin):
                 te = min(vort['tdead'], ts + (xmax-xmin+2*self.vortrad)/self.xvel)
                 self.buff[etype].append({'action': 'push', 'vcid': vort['vcid'], 'vid': vort['vid'], 'eid': eid, 'ts': ts, 'te': te, 't': ts}) 
             
-            self.buff[etype].append({'action': 'dead', 'vcid': vort['vcid'], 'vid': vort['vid'], 't': vort['tdead']}) 
+            self.buff[etype].append({'action': 'dead', 'vcid': vort['vcid'], 'vid': vort['vid'], 'ts': vort['tdead'], 'te': vort['tdead'], 't': vort['tdead']}) 
             self.buff[etype].sort(key=lambda x: x["t"])
                                     
     def __call__(self, intg):
@@ -179,13 +201,19 @@ class Turbulence(BasePlugin):
                 temp = np.zeros((self.nvmax, self.nparams, neles))
                 ctemp = np.zeros(neles).astype(int) # keep track of which vortex entry we are at for each element
                 #print(etype)
+                self.buffloc[etype] = 0
                 while self.buff[etype]:
-                    act = self.buff[etype].pop(0)
+                    #act = self.buff[etype].pop(0)
+                    act = self.buff[etype][self.buffloc[etype]]
+                    self.buffloc[etype] += 1
                     if act['action'] == 'push':
         	            vcid = act['vcid']
         	            vid = act['vid']
         	            eid = act['eid']
+        	            te = act['te']
         	            #print(f'VCID: {vcid}')
+        	            print(f'vcid = {vcid}')
+        	            print(f'te = {te}')
         	            vort = self.vorts[vcid][vid]
         	            temp[ctemp[eid],0,eid]=vort['xinit']
         	            temp[ctemp[eid],1,eid]=vort['yinit']
@@ -196,10 +224,10 @@ class Turbulence(BasePlugin):
         	            temp[ctemp[eid],6,eid]=act['te']
         	            ctemp[eid] += 1
         	            if ctemp[eid] == self.nvmax:
-        	                print(ctemp[eid])
-        	                print(etype)
-        	                print(eid)
-        	                #print(act['ts'])
+        	                #print(ctemp[eid])
+        	                #print(etype)
+        	                #print(eid)
+        	                print(act['ts'])
         	                breaketype = etype
         	                breakeid = eid
         	                breaktime.append(act['ts']) #?
@@ -207,12 +235,38 @@ class Turbulence(BasePlugin):
                     elif act['action'] == 'dead':
     	                vcid = act['vcid']
     	                vid = act['vid']
-    	                self.remove_vort_from_chain(intg, vcid, vid)
+    	                self.add_vort_to_chain(intg, vcid)
                 self.acteddy[etype].set(temp)
-                print(f'rank={self.rank} and min = {min(breaktime)}')
+                #print(f'rank={self.rank} and min = {min(breaktime)}')
                 gmin = self.comm.allreduce(min(breaktime), op=MPI.MIN)
-                print(f'rank={self.rank} and globalmin = {gmin}')         
-        	            
+                #print(f'rank={self.rank} and globalmin = {gmin}')
+                print(gmin)
+                #ci = self.buff[etype].index(next(obj for obj in self.buff[etype] if obj['te'] >= gmin))
+                self.buff[etype] = list(filter(lambda x: x['te'] >= gmin, self.buff[etype]))
+                #self.buff[etype]=self.buff[etype][ci:]
+                
+                
+                te0=self.buff[etype][0]['te']
+                print(f'te0 = {te0}')
+
+                # finally cull vorts from vortbuffer
+                for vortchain in self.vorts:
+                    while list(vortchain.values())[0]['tdead'] < gmin:
+                        if(self.rank == 0):
+                            tdead = list(vortchain.values())[0]['tdead']
+                            vcid = list(vortchain.values())[0]['vcid']
+                            print(f'front tdead of vcid {vcid} = {tdead} cf. {gmin}') 
+                        popped = vortchain.popitem(last=False)
+                        #pvid = popped['vid']
+                        #pvcid = popped['vcid']
+                        #print(f'popped {vid} from vc {vcid}')
+                        if(self.rank == 0):
+                            print(popped[0])
+                            tdead = list(vortchain.values())[0]['tdead']
+                            vcid = list(vortchain.values())[0]['vcid']
+                            print(f'DONE front tdead of vcid {vcid} = {tdead} cf. {gmin}')
+
+        	    # need to store the temp packed buffer, so we can cull old stuff but keep relevant stuff on next refill        
         
         
         
