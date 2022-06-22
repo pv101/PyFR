@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+import uuid
+import random
 
 from collections import deque
+from collections import OrderedDict
 from pyfr.plugins.base import BasePlugin
 from pyfr.regions import BoxRegion
 from pyfr.mpiutil import get_comm_rank_root
@@ -17,20 +20,25 @@ class Turbulence(BasePlugin):
         
         _, self.rank, self.root = get_comm_rank_root()
         
+        
+        self.mesh = intg.system.ele_map.items()
+        
         self.tnext = 0.0
         self.twin = 50.0
         
+        self.restart = False
+        
         self.xvel = xvel = 0.5
         
-        self.nvorts = 20
+        self.nvorts = 3
         
         # the box
-        self.xmin = 0.0
-        self.xmax = 1.0
-        self.ymin = 0.0
-        self.ymax = 1.0
-        self.zmin = 0.0
-        self.zmax = 1.0
+        self.xmin = 0.25
+        self.xmax = 0.75
+        self.ymin = 0.25
+        self.ymax = 0.75
+        self.zmin = 0.25
+        self.zmax = 0.75
         
         self.nvmax = nvmax = 6
         self.nparams = nparams = 7
@@ -43,34 +51,21 @@ class Turbulence(BasePlugin):
         
         self.vortrad = vortrad = 0.04
         
-        # add a single vortex
-        self.vorts.append({'xinit': 0.3, 'yinit': 0.5, 'zinit': 0.5, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
-        self.vorts.append({'xinit': 0.3, 'yinit': 0.7, 'zinit': 0.4, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
-        self.vorts.append({'xinit': 0.3, 'yinit': 0.1, 'zinit': 0.6, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
-        self.vorts.append({'xinit': 0.3, 'yinit': 0.2, 'zinit': 0.1, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
-        self.vorts.append({'xinit': 0.3, 'yinit': 0.3, 'zinit': 0.9, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
-        self.vorts.append({'xinit': 0.3, 'yinit': 0.2, 'zinit': 0.3, 'tinit': 0.0, 'eps': 0.01, 'eles': {}})
+        self.buff = {}
+        
+        self.n_ele_types = len(intg.system.ele_map)
+        
+        for etype in intg.system.ele_map:
+            self.buff[etype] = []
         
         eset = {}
-    
-        # add elements to vortices
-        for vort in self.vorts:
-            for etype, eles in intg.system.ele_map.items():
-                vort['eles'][etype] = set()
-                box = BoxRegion([vort['xinit']-vortrad,vort['yinit']-vortrad,vort['zinit']-vortrad],[self.xmax,vort['yinit']+vortrad,vort['zinit']+vortrad])
-                pts = eles.ploc_at_np('upts')
-                pts = np.moveaxis(pts, 1, -1) # required = check with Freddie
-                inside = box.pts_in_region(pts)
-                elestemp = []
-                if np.any(inside):
-                    elestemp = np.any(inside, axis=0).nonzero()[0].tolist()
-                for eid in elestemp:
-                    xmin = pts[:,eid,0].min()
-                    xmax = pts[:,eid,0].max()
-                    ts = max(vort['tinit'], vort['tinit'] + ((xmin - vort['xinit'] - self.vortrad)/self.xvel))
-                    te = ts + (xmax-xmin+2*self.vortrad)/self.xvel
-                    vort['eles'][etype].add((eid, ts, te)) # tuple (eid,ts,te)
         
+        if self.restart:
+            pass
+        else:
+            for i in range(self.nvorts):
+                self.make_vort_chain(intg, 0, i, 3)
+
         # add macro and external data
         for etype, eles in intg.system.ele_map.items():
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence', {'nvmax': nvmax, 'vortrad': vortrad, 'xvel': xvel})
@@ -82,38 +77,175 @@ class Turbulence(BasePlugin):
         # keep info for later (dont actually need to do this, can just look at matrix dims)                      
         for etype, eles in intg.system.ele_map.items():
             self.neles[etype] = eles.neles
-                                 
+
+    
+    def make_vort_chain(self, intg, tinit, vcid, n):
+        t = tinit
+        vort_chain = OrderedDict()
+        seed = vcid
+        np.random.seed(seed)
+        for i in range(n):
+            xyz = np.random.uniform(0, 1, 3)
+
+            print(xyz)
+            
+            xinit = (self.xmin + self.vortrad) + (self.xmax-self.xmin-2*self.vortrad)*xyz[0]
+            yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
+            zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
+            
+            print(f'rank={self.rank}, seed={seed}, x={xinit}, y={yinit}, z={zinit}')
+            
+            tdead = t + (self.xmax-xinit-self.vortrad)/self.xvel
+            print(tdead)
+            
+            vid = uuid.uuid1()
+            vort = {'killcount': 0, 'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
+            vort_chain[vid] = vort
+            self.vort_to_buffer(intg, vort)
+            t += tdead
+            
+        self.vorts.append(vort_chain)
+    
+    def remove_vort_from_chain(self, intg, vcid, vid):
+        #print(self.vorts[vcid])
+        self.vorts[vcid][vid]['killcount'] += 1
+        #print(self.vorts[vcid][vid]['killcount'])
+        # if all the element types are done with it
+        if self.vorts[vcid][vid]['killcount'] == self.n_ele_types:
+            print(f"Killing {vid} from chain {vcid}.")
+            del self.vorts[vcid][vid] # delete
+            print(self.vorts[vcid])
+            # then add one to end of the chain
+            t = self.vorts[vcid][next(reversed(self.vorts[vcid]))]['tdead']
+            seed = int(t*10000)
+            
+            print(f'vcid={vcid}, seed={t}')
+            np.random.seed(seed)
+            xyz = np.random.uniform(0, 1, 3)
+            
+            xinit = self.xmin + self.vortrad
+            yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
+            zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
+            
+            print(f'x={xinit}, y={yinit}, z={zinit}')
+            
+            tdead = t + (self.xmax-xinit-self.vortrad)/self.xvel
+            
+            vid = uuid.uuid1()
+            
+            vort = {'killcount': 0, 'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
+            self.vorts[vcid][vid]=vort
+            self.vort_to_buffer(intg, vort)
+             
+    def vort_to_buffer(self, intg, vort):
+        for etype, eles in self.mesh:
+
+            elestemp = []
+
+            box = BoxRegion([vort['xinit']-self.vortrad,
+                             vort['yinit']-self.vortrad,
+                             vort['zinit']-self.vortrad],
+                            [self.xmax,
+                             vort['yinit']+self.vortrad,
+                             vort['zinit']+self.vortrad])
+            pts = eles.ploc_at_np('upts')
+            pts = np.moveaxis(pts, 1, -1) # required = check with Freddie
+            inside = box.pts_in_region(pts)
+
+            if np.any(inside):
+                elestemp = np.any(inside, axis=0).nonzero()[0].tolist()
+                
+            for eid in elestemp:
+                xmin = pts[:,eid,0].min()
+                xmax = pts[:,eid,0].max()
+                ts = max(vort['tinit'], vort['tinit'] + ((xmin - vort['xinit'] - self.vortrad)/self.xvel))
+                te = min(vort['tdead'], ts + (xmax-xmin+2*self.vortrad)/self.xvel)
+                self.buff[etype].append({'action': 'push', 'vcid': vort['vcid'], 'vid': vort['vid'], 'eid': eid, 'ts': ts, 'te': te, 't': ts}) 
+            
+            self.buff[etype].append({'action': 'dead', 'vcid': vort['vcid'], 'vid': vort['vid'], 't': vort['tdead']}) 
+            self.buff[etype].sort(key=lambda x: x["t"])
+                                    
     def __call__(self, intg):
         tcurr = intg.tcurr
         
+        breaketype = None
+        breakeid = None
+        breaktime = None
+        #print(f"Hello, {tcurr}. You are 1.")
         if tcurr >= self.tnext:
-            print('Transferring update ...')
+        
             for etype, neles in self.neles.items():
+                temp = np.zeros((self.nvmax, self.nparams, neles))
+                ctemp = np.zeros(neles).astype(int) # keep track of which vortex entry we are at for each element
+                #print(etype)
+                while self.buff[etype]:
+                    act = self.buff[etype].pop(0)
+                    if act['action'] == 'push':
+        	            vcid = act['vcid']
+        	            vid = act['vid']
+        	            eid = act['eid']
+        	            #print(f'VCID: {vcid}')
+        	            vort = self.vorts[vcid][vid]
+        	            temp[ctemp[eid],0,eid]=vort['xinit']
+        	            temp[ctemp[eid],1,eid]=vort['yinit']
+        	            temp[ctemp[eid],2,eid]=vort['zinit']
+        	            temp[ctemp[eid],3,eid]=vort['tinit']
+        	            temp[ctemp[eid],4,eid]=vort['eps']
+        	            temp[ctemp[eid],5,eid]=act['ts']
+        	            temp[ctemp[eid],6,eid]=act['te']
+        	            ctemp[eid] += 1
+        	            if ctemp[eid] == self.nvmax:
+        	                print(ctemp[eid])
+        	                print(etype)
+        	                print(eid)
+        	                print(act['ts'])
+        	                breaketype = etype
+        	                breakeid = eid
+        	                breaktime = act['ts'] #?
+        	                break
+                    elif act['action'] == 'dead':
+    	                vcid = act['vcid']
+    	                vid = act['vid']
+    	                self.remove_vort_from_chain(intg, vcid, vid)
+                self.acteddy[etype].set(temp)         
+        	            
+        
+        
+        
+            print('Transferring update ...')
+            #print(self.vorts)
+            #print(self.buff)
+            #for etype, neles in self.neles.items():
+                #uuid = list(self.vorts[0].values())[0]['vid']
+                #print(uuid)
+                #self.remove_vort_from_chain(intg, 0, uuid)
+          
+            #for etype, neles in self.neles.items():
 
-        	    temp = np.zeros((self.nvmax, self.nparams, neles))
-        	    ctemp = np.zeros(neles).astype(int) # keep track of which vortex entry we are at for each element
+        	#    temp = np.zeros((self.nvmax, self.nparams, neles))
+        	#    ctemp = np.zeros(neles).astype(int) # keep track of which vortex entry we are at for each element
 
-        	    for vort in self.vorts:
-        	        elestemp = vort['eles'][etype]
-        	        for ele in elestemp:
-        	            eid = ele[0]
-        	            ts = ele[1]
-        	            te = ele[2]
-        	            if ts < (self.tnext+self.twin) and te > self.tnext:
-        	                if ctemp[eid] >= self.nvmax:
-        	                    print("Error ...")
-        	                temp[ctemp[eid],0,eid]=vort['xinit']
-        	                temp[ctemp[eid],1,eid]=vort['yinit']
-        	                temp[ctemp[eid],2,eid]=vort['zinit']
-        	                temp[ctemp[eid],3,eid]=vort['tinit']
-        	                temp[ctemp[eid],4,eid]=vort['eps']  
-        	                temp[ctemp[eid],5,eid]=ts
-        	                temp[ctemp[eid],6,eid]=te
-        	                ctemp[eid] += 1
-        	            else:
-        	                print('rejecting')
+        	#    for vort in self.vorts:
+        	#        elestemp = vort['eles'][etype]
+        	#        for ele in elestemp:
+        	#            eid = ele[0]
+        	#            ts = ele[1]
+        	#            te = ele[2]
+        	#            if ts < (self.tnext+self.twin) and te > self.tnext:
+        	#                if ctemp[eid] >= self.nvmax:
+        	#                    print("Error ...")
+        	#                temp[ctemp[eid],0,eid]=vort['xinit']
+        	#                temp[ctemp[eid],1,eid]=vort['yinit']
+        	#                temp[ctemp[eid],2,eid]=vort['zinit']
+        	#                temp[ctemp[eid],3,eid]=vort['tinit']
+        	#                temp[ctemp[eid],4,eid]=vort['eps']  
+        	#                temp[ctemp[eid],5,eid]=ts
+        	#                temp[ctemp[eid],6,eid]=te
+        	#                ctemp[eid] += 1
+        	#            else:
+        	#                print('rejecting')
         	                
-        	    self.acteddy[etype].set(temp)
+        	#    self.acteddy[etype].set(temp)
         
         self.tnext += self.twin
     	    
