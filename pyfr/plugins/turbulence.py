@@ -23,8 +23,16 @@ class Turbulence(BasePlugin):
         
         self.buffloc = {}
         
+        
+        
         self.mesh = intg.system.ele_map.items()
         
+        self.dtmargin = 0
+        if hasattr(intg, 'dtmax'):
+            self.dtmargin = intg.dtmax
+        else:
+            self.dtmargin = intg._dt
+    
         self.tnext = 0.0
         self.twin = 50.0
         
@@ -32,7 +40,7 @@ class Turbulence(BasePlugin):
         
         self.xvel = xvel = 0.5
         
-        self.nvorts = 15
+        self.turbl = 0.04
         
         # the box
         self.xmin = 0.25
@@ -42,7 +50,13 @@ class Turbulence(BasePlugin):
         self.zmin = 0.25
         self.zmax = 0.75
         
-        self.nvmax = nvmax = 6
+        ain = (self.ymax-self.ymin)*(self.zmax-self.zmin)
+        
+        self.nvorts = int(ain/(4*self.turbl*self.turbl))
+        
+        print(self.nvorts)
+        
+        self.nvmax = nvmax = 15
         self.nparams = nparams = 7
         
         self.acteddy = acteddy = {}
@@ -101,7 +115,7 @@ class Turbulence(BasePlugin):
             #print(tdead)
             
             vid = uuid.uuid1()
-            vort = {'killcount': 0, 'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
+            vort = {'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
             vort_chain[vid] = vort
             self.vort_to_buffer(intg, vort)
             t += tdead
@@ -125,7 +139,7 @@ class Turbulence(BasePlugin):
         
         vid = uuid.uuid1()
         
-        vort = {'killcount': 0, 'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
+        vort = {'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
         self.vorts[vcid][vid]=vort
         self.vort_to_buffer(intg, vort)
        
@@ -165,7 +179,8 @@ class Turbulence(BasePlugin):
         tfull = []
         tfullm = 0
         
-        if tcurr >= self.tnext:
+        if tcurr+self.dtmargin >= self.tnext:
+            
             for etype, neles in self.neles.items():
                 temp = np.zeros((self.nvmax, self.nparams, neles))
                 # keep track of which vortex entry we are at for each element
@@ -190,6 +205,8 @@ class Turbulence(BasePlugin):
         	            ctemp[eid] += 1
         	            if ctemp[eid] == self.nvmax:
         	                # record ts associated with maxed out bufer for given etype
+        	                if act['ts'] == self.tnext:
+        	                    print('Increaase nvmax')
         	                tfull.append(act['ts'])
         	                # break the while loop for that particular element type
         	                break
@@ -201,16 +218,20 @@ class Turbulence(BasePlugin):
                 # send off the active eddy array
                 self.acteddy[etype].set(temp)
                 
-                # agree on how far we can go
-                tfullm = self.comm.allreduce(min(tfull), op=MPI.MIN)
+            # agree on how far we can go
+            
+            #get limiting one
+            tfullm = min(tfull, default=0)
                 
-                # cull old actions
+            # cull old actions
+            for etype, neles in self.neles.items():
                 self.buff[etype] = list(filter(lambda x: x['te'] >= tfullm, self.buff[etype]))
             
-                # cull old vorts
-                for vortchain in self.vorts:
-                    while list(vortchain.values())[0]['tdead'] < tfullm:
-                        vortchain.popitem(last=False)
-                        
+            # cull old vorts
+            for vortchain in self.vorts:
+                while list(vortchain.values())[0]['tdead'] < tfullm:
+                    vortchain.popitem(last=False)
+                    
+            print(f'Rank {self.rank}, tfullm  {tfullm}')          
             self.tnext = tfullm
     	    
