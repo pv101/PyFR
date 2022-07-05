@@ -57,7 +57,7 @@ class Turbulence(BasePlugin):
         print(self.nvorts)
         
         self.nvmax = nvmax = 15
-        self.nparams = nparams = 7
+        self.nparams = nparams = 9
         
         self.acteddy = acteddy = {}
         self.neles = neles = {}
@@ -115,7 +115,10 @@ class Turbulence(BasePlugin):
             #print(tdead)
             
             vid = uuid.uuid1()
-            vort = {'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
+            epsx = np.random.choice([-1,1])
+            epsy = np.random.choice([-1,1])
+            epsz = np.random.choice([-1,1])
+            vort = {'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': epsx, 'epsy': epsy, 'epsz': epsz}
             vort_chain[vid] = vort
             self.vort_to_buffer(intg, vort)
             t += tdead
@@ -139,7 +142,11 @@ class Turbulence(BasePlugin):
         
         vid = uuid.uuid1()
         
-        vort = {'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': 0.01}
+        epsx = np.random.choice([-1,1])
+        epsy = np.random.choice([-1,1])
+        epsz = np.random.choice([-1,1])
+        
+        vort = {'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': epsx, 'epsy': epsy, 'epsz': epsz}
         self.vorts[vcid][vid]=vort
         self.vort_to_buffer(intg, vort)
        
@@ -202,6 +209,8 @@ class Turbulence(BasePlugin):
         	            temp[ctemp[eid],4,eid]=vort['eps']
         	            temp[ctemp[eid],5,eid]=act['ts']
         	            temp[ctemp[eid],6,eid]=act['te']
+        	            temp[ctemp[eid],7,eid]=vort['epsy']
+        	            temp[ctemp[eid],8,eid]=vort['epsz']
         	            ctemp[eid] += 1
         	            if ctemp[eid] == self.nvmax:
         	                # record ts associated with maxed out bufer for given etype
