@@ -13,6 +13,7 @@
   fpdtype_t delta[${ndims}];
   fpdtype_t arg;
   fpdtype_t magic = 1.0;
+  fpdtype_t rs = 1.0;
   utilde[0] = 0.0;
   utilde[1] = 0.0;
   utilde[2] = 0.0;
@@ -28,30 +29,28 @@
             arg += 0.5*invsig2*invrad2*(pos[${i}]-ploc[${i}])*(pos[${i}]-ploc[${i}]);
         % endfor
 
-        g = ${pyfr.polyfit(lambda x: exp(x), 0, 1, 8, 'arg')};
+        g = r2 < rad*rad ? ${pyfr.polyfit(lambda x: exp(x), 0, 1, 8, 'arg')} : 0.0;
         
         eps[0] = acteddy[${j}][4]
         eps[1] = acteddy[${j}][7]
         eps[2] = acteddy[${j}][8]
         
         % for i in range(ndims): 
-            utilde[${i}] += eps[${i}]*g
+            utilde[${i}] += rs*eps[${i}]*g*magic;
         % endfor 
-         
-         
-        src[0] += r2 < rad*rad ? acteddy[${j}][4] : 0.0;
         
-        
-        
-        % for i in range(ndims):
-            src[${i+1}] += r2 < rad*rad ? acteddy[${j}][4]*(pos[${i}]-ploc[${i}]) : 0.0;
-        % endfor
-        
-        
-        
-        
-        
-        src[${nvars-1}] += r2 < rad*rad ? acteddy[${j}][4] : 0.0;
+        % for i in range(ndims): 
+            utilde[${i}] *= rs;
+        % endfor  
     }
   % endfor
+  
+  src[0] += ;
+
+  % for i in range(ndims):
+    src[${i+1}] += u[0]*utilde[${i}]*(xvel/rad);
+  % endfor
+        
+  src[${nvars-1}] += ;
+  
 </%pyfr:macro>
