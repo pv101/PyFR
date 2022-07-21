@@ -23,7 +23,11 @@ class Turbulence(BasePlugin):
         
         self.buffloc = {}
         
+        self.machbar = machbar = 0.2
+        self.rhobar = rhobar = 1.0
+        self.gamma = gamma = 1.4
         
+        self.srafac = srafac = rhobar*(gamma-1.0)*machbar*machbar
         
         self.mesh = intg.system.ele_map.items()
         
@@ -43,12 +47,15 @@ class Turbulence(BasePlugin):
         self.turbl = 0.04
         
         # the box
-        self.xmin = 0.25
-        self.xmax = 0.75
+        self.xin = 0.5
+        self.xmax = self.xin + self.turbl
+        self.xmin = self.xin - self.turbl
         self.ymin = 0.25
         self.ymax = 0.75
         self.zmin = 0.25
         self.zmax = 0.75
+        
+        xin = self.xin
         
         ain = (self.ymax-self.ymin)*(self.zmax-self.zmin)
         
@@ -83,6 +90,11 @@ class Turbulence(BasePlugin):
                 self.make_vort_chain(intg, 0, i, 2)
 
         # add macro and external data
+        
+        print(nvmax)
+        print(vortrad)
+        print(xvel)
+        
         for etype, eles in intg.system.ele_map.items():
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence', {'nvmax': nvmax, 'vortrad': vortrad, 'xvel': xvel})
             acteddy[etype] = eles._be.matrix((nvmax, nparams, eles.neles), tags={'align'})
