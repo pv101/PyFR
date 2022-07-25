@@ -23,11 +23,14 @@ class Turbulence(BasePlugin):
         
         self.buffloc = {}
         
-        self.machbar = machbar = 0.2
+        self.machbar = machbar = 0.133
         self.rhobar = rhobar = 1.0
         self.gamma = gamma = 1.4
         
         self.srafac = srafac = rhobar*(gamma-1.0)*machbar*machbar
+        
+        print('srcfac')
+        print(srafac)
         
         self.mesh = intg.system.ele_map.items()
         
@@ -44,7 +47,9 @@ class Turbulence(BasePlugin):
         
         self.xvel = xvel = 0.5
         
-        self.turbl = 0.04
+        self.turbl = 0.15
+        
+        self.vortrad = vortrad = 0.07
         
         # the box
         self.xin = 0.5
@@ -59,7 +64,7 @@ class Turbulence(BasePlugin):
         
         ain = (self.ymax-self.ymin)*(self.zmax-self.zmin)
         
-        self.nvorts = int(ain/(4*self.turbl*self.turbl))
+        self.nvorts = int(ain/(4*self.vortrad*self.vortrad))
         
         print(self.nvorts)
         
@@ -72,7 +77,7 @@ class Turbulence(BasePlugin):
         self.vorts = []
         eles = []
         
-        self.vortrad = vortrad = 0.04
+        
         
         self.buff = {}
         
@@ -127,9 +132,9 @@ class Turbulence(BasePlugin):
             #print(tdead)
             
             vid = uuid.uuid1()
-            epsx = np.random.choice([-1,1])
-            epsy = np.random.choice([-1,1])
-            epsz = np.random.choice([-1,1])
+            epsx = float(np.random.choice([-1,1]))
+            epsy = float(np.random.choice([-1,1]))
+            epsz = float(np.random.choice([-1,1]))
             vort = {'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': epsx, 'epsy': epsy, 'epsz': epsz}
             vort_chain[vid] = vort
             self.vort_to_buffer(intg, vort)
@@ -154,9 +159,9 @@ class Turbulence(BasePlugin):
         
         vid = uuid.uuid1()
         
-        epsx = np.random.choice([-1,1])
-        epsy = np.random.choice([-1,1])
-        epsz = np.random.choice([-1,1])
+        epsx = float(np.random.choice([-1,1]))
+        epsy = float(np.random.choice([-1,1]))
+        epsz = float(np.random.choice([-1,1]))
         
         vort = {'vcid': vcid, 'vid': vid, 'xinit': xinit, 'yinit': yinit, 'zinit': zinit, 'tinit': t, 'tdead': tdead, 'eps': epsx, 'epsy': epsy, 'epsz': epsz}
         self.vorts[vcid][vid]=vort
