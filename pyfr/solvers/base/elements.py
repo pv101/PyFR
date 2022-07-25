@@ -163,13 +163,15 @@ class BaseElements:
         return [self.cfg.getexpr('solver-source-terms', v, '0', subs=subs)
                 for v in convars]
 
+    # hacked - need to check ini file for whether we are using turbulence generator
+    
     @cached_property
     def _ploc_in_src_exprs(self):
-        return any(re.search(r'\bploc\b', ex) for ex in self._src_exprs)
+        return any(re.search(r'\bploc\b', ex) for ex in self._src_exprs) or True
 
     @cached_property
     def _soln_in_src_exprs(self):
-        return any(re.search(r'\bu\b', ex) for ex in self._src_exprs)
+        return any(re.search(r'\bu\b', ex) for ex in self._src_exprs) or True
 
     def set_backend(self, backend, nscalupts, nonce, linoff):
         self._be = backend

@@ -57,11 +57,11 @@
   src[0] += srafac*utilde[0]*(xvel/rad)*clip;
   
   % for i in range(ndims):
-    src[${i+1}] += utilde[${i}]*(xvel/rad)*clip;
+    src[${i+1}] += u[0]*utilde[${i}]*(xvel/rad)*clip;
   % endfor
   
   fpdtype_t udotu_fluct = ${pyfr.dot('utilde[{i}]', i=(0, ndims))};
         
-  src[${nvars-1}] += 0.5*udotu_fluct*(xvel/rad)*clip;
+  src[${nvars-1}] += 0.5*u[0]*udotu_fluct*(xvel/rad)*clip;
   
 </%pyfr:macro>
