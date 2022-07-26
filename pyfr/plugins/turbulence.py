@@ -3,6 +3,7 @@
 import numpy as np
 import uuid
 import random
+import math
 
 from collections import deque
 from collections import OrderedDict
@@ -47,18 +48,23 @@ class Turbulence(BasePlugin):
         
         self.xvel = xvel = 0.5
         
-        self.turbl = 0.15
-        
-        self.vortrad = vortrad = 0.07
+        self.turbl = 0.05
+        self.vortrad = vortrad = 0.05
         
         # the box
         self.xin = 0.5
         self.xmax = self.xin + self.turbl
         self.xmin = self.xin - self.turbl
-        self.ymin = 0.25
-        self.ymax = 0.75
-        self.zmin = 0.25
-        self.zmax = 0.75
+        self.ymin = ymin = 0.25
+        self.ymax = ymax = 0.75
+        self.zmin = zmin = 0.25
+        self.zmax = zmax = 0.75
+        
+        self.sigma = sigma = 0.7
+        self.rs = rs = 0.001
+        
+        self.gc = gc = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
+        print(f'GC is {gc}')
         
         xin = self.xin
         
@@ -101,7 +107,7 @@ class Turbulence(BasePlugin):
         print(xvel)
         
         for etype, eles in intg.system.ele_map.items():
-            eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence', {'nvmax': nvmax, 'vortrad': vortrad, 'xvel': xvel})
+            eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence', {'nvmax': nvmax, 'vortrad': vortrad, 'xvel': xvel, 'srafac': srafac, 'xin': xin, 'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax, 'sigma' : sigma, 'rs': rs})
             acteddy[etype] = eles._be.matrix((nvmax, nparams, eles.neles), tags={'align'})
             eles._set_external('acteddy',
                                f'in broadcast-col fpdtype_t[{nvmax}][{nparams}]',
@@ -110,7 +116,6 @@ class Turbulence(BasePlugin):
         # keep info for later (dont actually need to do this, can just look at matrix dims)                      
         for etype, eles in intg.system.ele_map.items():
             self.neles[etype] = eles.neles
-
     
     def make_vort_chain(self, intg, tinit, vcid, n):
         t = tinit
@@ -122,13 +127,18 @@ class Turbulence(BasePlugin):
 
             #print(xyz)
             
-            xinit = (self.xmin + self.vortrad) + (self.xmax-self.xmin-2*self.vortrad)*xyz[0]
-            yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
-            zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
+            #xinit = (self.xmin + self.vortrad) + (self.xmax-self.xmin-2*self.vortrad)*xyz[0]
+            #yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
+            #zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
+            
+            xinit = self.xmin + (self.xmax-self.xmin)*xyz[0]
+            yinit = self.ymin + (self.ymax-self.ymin)*xyz[1]
+            zinit = self.zmin + (self.zmax-self.zmin)*xyz[2]
             
             #print(f'rank={self.rank}, seed={seed}, x={xinit}, y={yinit}, z={zinit}')
             
-            tdead = t + (self.xmax-xinit-self.vortrad)/self.xvel
+            #tdead = t + (self.xmax-xinit-self.vortrad)/self.xvel
+            tdead = t + (self.xmax-xinit)/self.xvel
             #print(tdead)
             
             vid = uuid.uuid1()
@@ -149,13 +159,17 @@ class Turbulence(BasePlugin):
         np.random.seed(seed)
         xyz = np.random.uniform(0, 1, 3)
         
-        xinit = self.xmin + self.vortrad
-        yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
-        zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
+        #xinit = self.xmin + self.vortrad
+        #yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
+        #zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
+        
+        xinit = self.xmin
+        yinit = self.ymin + (self.ymax-self.ymin)*xyz[1]
+        zinit = self.zmin + (self.zmax-self.zmin)*xyz[2]
         
         #print(f'x={xinit}, y={yinit}, z={zinit}')
         
-        tdead = t + (self.xmax-xinit-self.vortrad)/self.xvel
+        tdead = t + (self.xmax-xinit)/self.xvel
         
         vid = uuid.uuid1()
         
@@ -178,6 +192,7 @@ class Turbulence(BasePlugin):
                             [self.xmax,
                              vort['yinit']+self.vortrad,
                              vort['zinit']+self.vortrad])
+            # need to take intersetction of this box with the injection region                 
             pts = eles.ploc_at_np('upts')
             pts = np.moveaxis(pts, 1, -1) # required = check with Freddie
             inside = box.pts_in_region(pts)

@@ -4,8 +4,8 @@
 <%pyfr:macro name='turbulence' params='t, u, ploc, src'>
   fpdtype_t rad = ${vortrad};
   fpdtype_t invrad2 = 1.0/(${vortrad}*${vortrad});
-  fpdtype_t invsigma2 = 1.0/(0.7*0.7);
-  fpdtype_t invsigma = 1.0/0.7;
+  fpdtype_t invsigma2 = 1.0/(${sigma}*${sigma});
+  fpdtype_t invsigma = 1.0/${sigma};
   fpdtype_t xvel = ${xvel};
   fpdtype_t pos[${ndims}];
   fpdtype_t utilde[${ndims}];
@@ -13,15 +13,24 @@
   fpdtype_t delta2[${ndims}];
   fpdtype_t arg;
   fpdtype_t magic = 1.0;
-  fpdtype_t rs = 0.001;
+  fpdtype_t rs = ${rs};
   utilde[0] = 0.0;
   utilde[1] = 0.0;
   utilde[2] = 0.0;
   fpdtype_t xloc2;
   fpdtype_t clip;
+  fpdtype_t clipx;
+  fpdtype_t clipy;
+  fpdtype_t clipz;
   fpdtype_t g;
-  fpdtype_t xin = 0.5;
-  fpdtype_t srafac = 0.007075599999999999;
+  fpdtype_t xin = ${xin};
+  fpdtype_t srafac = ${srafac};
+  fpdtype_t xmin = ${xin} - ${vortrad};
+  fpdtype_t xmax = ${xin} + ${vortrad};
+  fpdtype_t ymin = ${ymin};
+  fpdtype_t ymax = ${ymax};
+  fpdtype_t zmin = ${zmin};
+  fpdtype_t zmax = ${zmax};
   
   % for j in range(nvmax):
     arg = 0.0;
@@ -52,7 +61,12 @@
   % endfor
   
   xloc2 = -0.5*3.141592654*(xin-ploc[0])*(xin-ploc[0])*invrad2;
-  clip = ${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'xloc2')};
+  
+  clipx = ploc[0] < xmax ? ploc[0] > xmin ? ${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'xloc2')} : 0.0: 0.0;
+  clipy = ploc[1] < ymax ? ploc[0] > ymin ? 1.0 : 0.0: 0.0;
+  clipz = ploc[2] < zmax ? ploc[0] > zmin ? 1.0 : 0.0: 0.0;
+  
+  clip = clipx*clipy*clipz;
   
   src[0] += srafac*utilde[0]*(xvel/rad)*clip;
   
