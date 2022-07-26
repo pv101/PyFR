@@ -45,7 +45,6 @@ class BaseAdvectionElements(BaseElements):
                 
         self._srctplargs['srcmacros'].append((mod, name))        
         self._srctplargs |= tplargs
-        print(self._srctplargs)
     
     
     # set external method
