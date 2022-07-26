@@ -157,7 +157,7 @@ class Turbulence(BasePlugin):
                                          'vid': vort['vid'], 'eid': eid, 'ts': ts,
                                          'te': te, 't': ts}) 
             
-            self.buff[etype].append({'action': 'dead', 'vcid': vort['vcid'],
+            self.buff[etype].append({'action': 'dead', 'vcid': vort['vcid'], 'te': vort['tdead'],
                                      't': vort['tdead']})
                                      
             self.buff[etype].sort(key=lambda x: x["t"])
