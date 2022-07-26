@@ -32,7 +32,7 @@ class BaseStdIntegrator(BaseCommon, BaseIntegrator):
         from pyfr.plugins.turbulence import Turbulence
         
         #self.source = Source(self,'','')
-        self.turbulence = Turbulence(self,'','')
+        self.turbulence = Turbulence(self,'turbulence','')
         
         self.system.commit()
 

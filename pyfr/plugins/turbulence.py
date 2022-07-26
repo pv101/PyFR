@@ -1,90 +1,68 @@
 # -*- coding: utf-8 -*-
 
-import numpy as np
-import uuid
-import random
 import math
+import numpy as np
+import random
+import uuid
 
-from collections import deque
 from collections import OrderedDict
 from pyfr.plugins.base import BasePlugin
 from pyfr.regions import BoxRegion
 from pyfr.mpiutil import get_comm_rank_root
-from mpi4py import MPI
 
 class Turbulence(BasePlugin):
     name = 'turbulence'
-    systems = ['*']
+    systems = ['navier-stokes']
     formulations = ['std']
 
     def __init__(self, intg, cfgsect, suffix):
         super().__init__(intg, cfgsect, suffix)
         
+        self.restart = False
+        
         self.comm, self.rank, self.root = get_comm_rank_root()
+        constants = self.cfg.items_as('constants', float)
+        params = self.cfg.items_as(cfgsect, float)
+
+        self.rhobar = rhobar = params['rho-bar']
+        self.ubar = ubar = params['u-bar']
+        self.machbar = machbar = params['mach-bar']
+        self.rs = rs = params['reynolds-stress']
+        self.ls = ls = params['length-scale']
+        self.sigma = sigma = params['sigma']
         
-        self.buffloc = {}
-        
-        self.machbar = machbar = 0.133
-        self.rhobar = rhobar = 1.0
-        self.gamma = gamma = 1.4
-        
-        self.srafac = srafac = rhobar*(gamma-1.0)*machbar*machbar
-        
-        print('srcfac')
-        print(srafac)
-        
-        self.mesh = intg.system.ele_map.items()
+        self.xin = xin = params['x-in']
+        self.xmin = xmin = xin - ls
+        self.xmax = xmax = xin + ls
+        self.ymin = ymin = params['y-min']
+        self.ymax = ymax = params['y-max']
+        self.zmin = zmin = params['z-min']
+        self.zmax = zmax = params['z-max']
+
+        self.srafac = srafac = rhobar*(constants['gamma']-1.0)*machbar*machbar
+        self.gc = gc = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
+        self.nvorts = nvorts = int((ymax-ymin)*(zmax-zmin)/(4*self.ls*self.ls))
         
         self.dtmargin = 0
+        
         if hasattr(intg, 'dtmax'):
             self.dtmargin = intg.dtmax
         else:
             self.dtmargin = intg._dt
-    
-        self.tnext = 0.0
-        self.twin = 50.0
-        
-        self.restart = False
-        
-        self.xvel = xvel = 0.5
-        
-        self.turbl = 0.05
-        self.vortrad = vortrad = 0.05
-        
-        # the box
-        self.xin = 0.5
-        self.xmax = self.xin + self.turbl
-        self.xmin = self.xin - self.turbl
-        self.ymin = ymin = 0.25
-        self.ymax = ymax = 0.75
-        self.zmin = zmin = 0.25
-        self.zmax = zmax = 0.75
-        
-        self.sigma = sigma = 0.7
-        self.rs = rs = 0.001
-        
-        self.gc = gc = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
-        print(f'GC is {gc}')
-        
-        xin = self.xin
-        
-        ain = (self.ymax-self.ymin)*(self.zmax-self.zmin)
-        
-        self.nvorts = int(ain/(4*self.vortrad*self.vortrad))
-        
-        print(self.nvorts)
-        
+
         self.nvmax = nvmax = 15
         self.nparams = nparams = 9
+        
+        self.buffloc = {}  
+        
+        self.mesh = intg.system.ele_map.items()
         
         self.acteddy = acteddy = {}
         self.neles = neles = {}
         
         self.vorts = []
         eles = []
-        
-        
-        
+
         self.buff = {}
         
         self.n_ele_types = len(intg.system.ele_map)
@@ -94,20 +72,21 @@ class Turbulence(BasePlugin):
         
         eset = {}
         
+        self.tnext = 0.0
+        
         if self.restart:
             pass
         else:
             for i in range(self.nvorts):
-                self.make_vort_chain(intg, 0, i, 2)
+                self.make_vort_chain(intg, 0.0, i)
 
         # add macro and external data
-        
-        print(nvmax)
-        print(vortrad)
-        print(xvel)
-        
+
         for etype, eles in intg.system.ele_map.items():
-            eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence', {'nvmax': nvmax, 'vortrad': vortrad, 'xvel': xvel, 'srafac': srafac, 'xin': xin, 'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax, 'sigma' : sigma, 'rs': rs})
+            eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
+            {'nvmax': nvmax, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
+             'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
+             'sigma' : sigma, 'rs': rs})
             acteddy[etype] = eles._be.matrix((nvmax, nparams, eles.neles), tags={'align'})
             eles._set_external('acteddy',
                                f'in broadcast-col fpdtype_t[{nvmax}][{nparams}]',
@@ -117,7 +96,7 @@ class Turbulence(BasePlugin):
         for etype, eles in intg.system.ele_map.items():
             self.neles[etype] = eles.neles
     
-    def make_vort_chain(self, intg, tinit, vcid, n):
+    def make_vort_chain(self, intg, tinit, vcid, n=2):
         t = tinit
         vort_chain = OrderedDict()
         seed = vcid
@@ -125,20 +104,14 @@ class Turbulence(BasePlugin):
         for i in range(n):
             xyz = np.random.uniform(0, 1, 3)
 
-            #print(xyz)
-            
-            #xinit = (self.xmin + self.vortrad) + (self.xmax-self.xmin-2*self.vortrad)*xyz[0]
-            #yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
-            #zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
-            
             xinit = self.xmin + (self.xmax-self.xmin)*xyz[0]
             yinit = self.ymin + (self.ymax-self.ymin)*xyz[1]
             zinit = self.zmin + (self.zmax-self.zmin)*xyz[2]
             
             #print(f'rank={self.rank}, seed={seed}, x={xinit}, y={yinit}, z={zinit}')
             
-            #tdead = t + (self.xmax-xinit-self.vortrad)/self.xvel
-            tdead = t + (self.xmax-xinit)/self.xvel
+            #tdead = t + (self.xmax-xinit-self.ls)/self.ubar
+            tdead = t + (self.xmax-xinit)/self.ubar
             #print(tdead)
             
             vid = uuid.uuid1()
@@ -159,17 +132,11 @@ class Turbulence(BasePlugin):
         np.random.seed(seed)
         xyz = np.random.uniform(0, 1, 3)
         
-        #xinit = self.xmin + self.vortrad
-        #yinit = (self.ymin + self.vortrad) + (self.ymax-self.ymin-2*self.vortrad)*xyz[1]
-        #zinit = (self.zmin + self.vortrad) + (self.zmax-self.zmin-2*self.vortrad)*xyz[2]
-        
         xinit = self.xmin
         yinit = self.ymin + (self.ymax-self.ymin)*xyz[1]
         zinit = self.zmin + (self.zmax-self.zmin)*xyz[2]
         
-        #print(f'x={xinit}, y={yinit}, z={zinit}')
-        
-        tdead = t + (self.xmax-xinit)/self.xvel
+        tdead = t + (self.xmax-xinit)/self.ubar
         
         vid = uuid.uuid1()
         
@@ -186,12 +153,12 @@ class Turbulence(BasePlugin):
 
             elestemp = []
 
-            box = BoxRegion([vort['xinit']-self.vortrad,
-                             vort['yinit']-self.vortrad,
-                             vort['zinit']-self.vortrad],
+            box = BoxRegion([vort['xinit']-self.ls,
+                             vort['yinit']-self.ls,
+                             vort['zinit']-self.ls],
                             [self.xmax,
-                             vort['yinit']+self.vortrad,
-                             vort['zinit']+self.vortrad])
+                             vort['yinit']+self.ls,
+                             vort['zinit']+self.ls])
             # need to take intersetction of this box with the injection region                 
             pts = eles.ploc_at_np('upts')
             pts = np.moveaxis(pts, 1, -1) # required = check with Freddie
@@ -201,10 +168,10 @@ class Turbulence(BasePlugin):
                 elestemp = np.any(inside, axis=0).nonzero()[0].tolist()
                 
             for eid in elestemp:
-                xmin = pts[:,eid,0].min()
-                xmax = pts[:,eid,0].max()
-                ts = max(vort['tinit'], vort['tinit'] + ((xmin - vort['xinit'] - self.vortrad)/self.xvel))
-                te = min(vort['tdead'], ts + (xmax-xmin+2*self.vortrad)/self.xvel)
+                exmin = pts[:,eid,0].min()
+                exmax = pts[:,eid,0].max()
+                ts = max(vort['tinit'], vort['tinit'] + ((exmin - vort['xinit'] - self.ls)/self.ubar))
+                te = min(vort['tdead'], ts + (exmax-exmin+2*self.ls)/self.ubar)
                 self.buff[etype].append({'action': 'push', 'vcid': vort['vcid'], 'vid': vort['vid'], 'eid': eid, 'ts': ts, 'te': te, 't': ts}) 
             
             self.buff[etype].append({'action': 'dead', 'vcid': vort['vcid'],
