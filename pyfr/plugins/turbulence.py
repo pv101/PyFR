@@ -19,6 +19,7 @@ class Turbulence(BasePlugin):
         super().__init__(intg, cfgsect, suffix)
         
         self.restart = restart
+        self.twindowmax = 10.0
         
         self.comm, self.rank, self.root = get_comm_rank_root()
         constants = self.cfg.items_as('constants', float)
@@ -57,15 +58,17 @@ class Turbulence(BasePlugin):
         self.buff = {}
         self.tfull = []
         self.etypeupdate = {}
+        self.vortrequests = {}
         for etype in intg.system.ele_map:
             self.buff[etype] = []
+            self.vortrequests[etype] = 0
             self.etypeupdate[etype] = True
         
         self.mesh = intg.system.ele_map.items()
         
         self.neles = {}
         
-        for etype, eles in intg.system.ele_map.items():
+        for etype, eles in self.mesh:
             self.neles[etype] = eles.neles
 
         self.tnext = 0.0
@@ -80,17 +83,17 @@ class Turbulence(BasePlugin):
 
         self.acteddy = acteddy = {}
         
-        for etype, eles in intg.system.ele_map.items():
+        for etype, eles in self.mesh:
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
             {'nvmax': nvmax, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
              'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
-             'sigma' : sigma, 'rs': rs})
+             'sigma' : sigma, 'rs': rs, 'gc': gc})
             acteddy[etype] = eles._be.matrix((nvmax, nparams, eles.neles), tags={'align'})
             eles._set_external('acteddy',
                                f'in broadcast-col fpdtype_t[{nvmax}][{nparams}]',
                                value=acteddy[etype])
                                
-    def make_vort(self, initial=True)
+    def make_vort(self, t, vcid, initial=True):
         vid = uuid.uuid1()
         xyz = np.random.uniform(0, 1, 3)
         if initial:
@@ -115,25 +118,27 @@ class Turbulence(BasePlugin):
         seed = vcid
         np.random.seed(seed)
         for i in range(clen):
-            vort = make_vort()
-            vortchain[vid] = vort
+            vort = self.make_vort(t, vcid)
+            vortchain[vort['vid']] = vort
             self.vort_to_buffer(vort)
-            t += tdead
+            t += vort['tdead']
         self.vortchains.append(vortchain)
         
-    def load_vortchain(self, vortchains):
+    def load_vortchains(self, vortchains):
         self.vortchains = vortchains
         for vortchain in self.vortchains:
             for vort in vortchain:
                 self.vort_to_buffer(vort)
            
-    def vort_to_vortchain(self, vcid):
-        t = self.vortchains[vcid][next(reversed(self.vortchains[vcid]))]['tdead']
-        seed = int(f'{t:.6E}'.split('E')[0].replace('.', ''))
-        np.random.seed(seed)
-        vort = make_vort(False)
-        self.vort_to_buffer(vort)
-        self.vortchains[vcid][vid]=vort
+    def vort_to_vortchain(self, vcid, etype):
+        self.vortrequests[etype] += 1
+        if self.vortrequests[etype] > max([value for (key,value) in self.vortrequests.items() if key != etype], default=0): 
+            t = self.vortchains[vcid][next(reversed(self.vortchains[vcid]))]['tdead']
+            seed = int(f'{t:.6E}'.split('E')[0].replace('.', ''))
+            np.random.seed(seed)
+            vort = self.make_vort(t, vcid, False)
+            self.vort_to_buffer(vort)
+            self.vortchains[vcid][vort['vid']]=vort
 
     def vort_to_buffer(self, vort):
         for etype, eles in self.mesh:
@@ -204,31 +209,33 @@ class Turbulence(BasePlugin):
             	            if ctemp[eid] == self.nvmax:
             	                if act['ts'] <= self.tnext:
             	                    print('Increase nvmax')
-            	                # record ts associated with maxed out temp for given etype
-            	                self.tfull.append({'etype': etype, 't': act['ts']})
-            	                self.tfull.sort(key=lambda x: x["t"])
-            	                self.buff[etype] = list(filter(lambda x: x['te'] >= act['ts'], self.buff[etype]))
+            	                self.tfull.append({'etype': etype, 't': act['t']})
+            	                self.buff[etype] = list(filter(lambda x: x['te'] >= act['t'], self.buff[etype]))
             	                
             	                # break the while loop for that particular element type
             	                break
                         elif act['action'] == 'dead':
-        	                vcid = act['vcid']
         	                # add a new vortx to the chain so it doesnt risk running dry
         	                # note that it will add events to the buffer, but these will all
         	                # be in the future, so buffloc is still valid
-        	                self.vort_to_vortchain(vcid)
-        	                
+        	                self.vort_to_vortchain(act['vcid'],etype)
+        	                if act['t'] >= self.tnext + self.twindowmax:
+        	                    self.tfull.append({'etype': etype, 't': act['t']})
+        	                    self.buff[etype] = list(filter(lambda x: x['te'] >= act['t'], self.buff[etype]))
+        	                    break
+        	                          
                     self.acteddy[etype].set(temp)
                     self.etypeupdate[etype] = False
-                    
+            
+            self.tfull.sort(key=lambda x: x["t"])        
             # make flags
-            ac = self.tfull.pop(0)
-            self.tnext = ac['t']
-            self.etypeupdate[ac['etype']] = True
+            tf = self.tfull.pop(0)
+            self.tnext = tf['t']
+            self.etypeupdate[tf['etype']] = True
             while self.tfull:
-                if self.tfull[0]['t'] == ac:
-                    ac = self.tfull.pop(0)
-                    self.etypeupdate[ac['etype']] = True
+                if self.tfull[0]['t'] == tf:
+                    tf = self.tfull.pop(0)
+                    self.etypeupdate[tf['etype']] = True
                 else:
                     break
 

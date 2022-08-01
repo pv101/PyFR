@@ -12,7 +12,7 @@
   fpdtype_t eps[${ndims}];
   fpdtype_t delta2[${ndims}];
   fpdtype_t arg;
-  fpdtype_t magic = 1.0;
+  fpdtype_t gc = ${gc};
   fpdtype_t rs = ${rs};
   utilde[0] = 0.0;
   utilde[1] = 0.0;
@@ -44,7 +44,7 @@
             delta2[${i}] = (pos[${i}]-ploc[${i}])*(pos[${i}]-ploc[${i}]);
             arg += 0.5*invsigma2*invls2*delta2[${i}];
         % endfor
-        g = delta2[0] < ls*ls ? delta2[1] < ls*ls ? delta2[2] < ls*ls ? invsigma*invsigma*invsigma*magic*magic*magic*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
+        g = delta2[0] < ls*ls ? delta2[1] < ls*ls ? delta2[2] < ls*ls ? invsigma*invsigma*invsigma*gc*gc*gc*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
         
         eps[0] = acteddy[${j}][4];
         eps[1] = acteddy[${j}][7];
