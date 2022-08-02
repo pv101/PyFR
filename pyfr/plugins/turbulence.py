@@ -200,9 +200,9 @@ class Turbulence(BasePlugin):
             	            temp[ctemp[eid],1,eid]=vort['yinit']
             	            temp[ctemp[eid],2,eid]=vort['zinit']
             	            temp[ctemp[eid],3,eid]=vort['tinit']
-            	            temp[ctemp[eid],5,eid]=act['ts']
-            	            temp[ctemp[eid],6,eid]=act['te']
-            	            temp[ctemp[eid],4,eid]=vort['epsx']
+            	            temp[ctemp[eid],4,eid]=act['ts']
+            	            temp[ctemp[eid],5,eid]=act['te']
+            	            temp[ctemp[eid],6,eid]=vort['epsx']
             	            temp[ctemp[eid],7,eid]=vort['epsy']
             	            temp[ctemp[eid],8,eid]=vort['epsz']
             	            ctemp[eid] += 1
