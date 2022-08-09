@@ -36,7 +36,7 @@
   
   % for i in range(nvmax):
     arg = 0.0;
-    if (t > acteddy[${i}][4] && t < acteddy[${i}][5])
+    if (t > acteddy[${i}][7] && t < acteddy[${i}][8])
     {
         pos[0] = acteddy[${i}][0] + (t-acteddy[${i}][3])*ubar;
         pos[1] = acteddy[${i}][1];
@@ -48,9 +48,9 @@
         % endfor
         g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? invsigma3*gc3*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
         
-        eps[0] = acteddy[${i}][6];
-        eps[1] = acteddy[${i}][7];
-        eps[2] = acteddy[${i}][8];
+        eps[0] = acteddy[${i}][4];
+        eps[1] = acteddy[${i}][5];
+        eps[2] = acteddy[${i}][6];
         
         % for j in range(ndims): 
             utilde[${j}] += eps[${j}]*g;
