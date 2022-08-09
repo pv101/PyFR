@@ -160,19 +160,15 @@ class Turbulence(BasePlugin):
             for etype, eles in self.mesh:
                 for eid in self.lut[etype]:
                     while self.lut[etype][eid] and (self.lut[etype][eid][0][2] < tcurr):
-                        dum = self.lut[etype][eid].pop(0)
-                        print(f'popping lut for rank {self.rank} as {dum}')
+                        self.lut[etype][eid].pop(0)
                            
             for etype, neles in self.neles.items():      
                 if self.etypeupdate[etype]:
-                    print(f'Updating buffer for {etype} on rank {self.rank} for time {self.tnext}')
                     temp = np.zeros((self.nvmax, self.nparams, neles))
                     for eid in self.lut[etype]:
                         for i in range(min(len(self.lut[etype][eid]),self.nvmax)):
                             temp[i,:,eid] = self.vorts[self.lut[etype][eid][i][0]] + self.lut[etype][eid][i][-2:]
-                    print(temp[self.nvmax-1,7,:][np.nonzero(temp[self.nvmax-1,7,:])])
                     adv = np.min(temp[self.nvmax-1,7,:][np.nonzero(temp[self.nvmax-1,7,:])])
-                    print(adv)
                     # need to hande case where we have run everything towards the end of the run
                     if adv <= self.tnext:
                         print('Increase nvmax')
