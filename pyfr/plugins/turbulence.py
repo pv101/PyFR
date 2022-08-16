@@ -5,7 +5,7 @@ import numpy as np
 import random
 import uuid
 
-from collections import OrderedDict
+from collections import defaultdict
 from pyfr.plugins.base import BasePlugin
 from pyfr.regions import BoxRegion
 from pyfr.mpiutil import get_comm_rank_root
@@ -99,11 +99,11 @@ class Turbulence(BasePlugin):
             vid += 1
         
         #############
-        self.lut = {}
+        self.lut = defaultdict(lambda: defaultdict(list))
         #############
         
-        for etype in intg.system.ele_map:
-            self.lut[etype] = {}
+        #for etype in intg.system.ele_map:
+        #    self.lut[etype] = {}
             
         for vid, vort in enumerate(self.vorts):
             for etype, eles in self.mesh:
@@ -125,13 +125,11 @@ class Turbulence(BasePlugin):
                     exmin = pts[:,eid,0].min()
                     exmax = pts[:,eid,0].max()
                     ts = max(vort[3], vort[3] + ((exmin - vort[0] - self.ls)/self.ubar))
-                    te = ts + (exmax-exmin+2*self.ls)/self.ubar
-                    if eid not in self.lut[etype]:
-                        self.lut[etype][eid] = []   
+                    te = ts + (exmax-exmin+2*self.ls)/self.ubar   
                     self.lut[etype][eid].append([vid,ts,te])
         
         for etype, eles in self.mesh:
-           for k, v in self.lut[etype].items():
+           for v in self.lut[etype].values():
                v.sort(key=lambda x: x[1],reverse=True)
 
         ###########################
