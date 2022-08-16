@@ -75,8 +75,6 @@ class Turbulence(BasePlugin):
         self.rng = np.random.default_rng(42)
         self.tadv = {}
         
-        
-        
         ###############
         self.vorts = []
         ###############
@@ -133,9 +131,8 @@ class Turbulence(BasePlugin):
                     self.lut[etype][eid].append([vid,ts,te])
         
         for etype, eles in self.mesh:
-           #print(self.lut[etype])
            for k, v in self.lut[etype].items():
-               v.sort(key=lambda x: x[1])
+               v.sort(key=lambda x: x[1],reverse=True)
 
         ###########################
         self.acteddy = acteddy = {}
@@ -159,15 +156,17 @@ class Turbulence(BasePlugin):
             # cull front of lut
             for etype, eles in self.mesh:
                 for eid in self.lut[etype]:
-                    while self.lut[etype][eid] and (self.lut[etype][eid][0][2] < tcurr):
-                        self.lut[etype][eid].pop(0)
+                    while self.lut[etype][eid] and (self.lut[etype][eid][-1][2] < tcurr):
+                        self.lut[etype][eid].pop()
                            
             for etype, neles in self.neles.items():      
                 if self.etypeupdate[etype]:
                     temp = np.zeros((self.nvmax, self.nparams, neles))
                     for eid in self.lut[etype]:
-                        for i in range(min(len(self.lut[etype][eid]),self.nvmax)):
-                            temp[i,:,eid] = self.vorts[self.lut[etype][eid][i][0]] + self.lut[etype][eid][i][-2:]
+                        lutl = len(self.lut[etype][eid])
+                        lutlm = min(lutl,self.nvmax)
+                        for i in range(lutlm):
+                            temp[i,:,eid] = self.vorts[self.lut[etype][eid][lutl-i][0]] + self.lut[etype][eid][lutl-i][-2:]
                     adv = np.min(temp[self.nvmax-1,7,:][np.nonzero(temp[self.nvmax-1,7,:])])
                     # need to hande case where we have run everything towards the end of the run
                     if adv <= self.tnext:
