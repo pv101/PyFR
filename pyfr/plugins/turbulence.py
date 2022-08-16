@@ -19,9 +19,7 @@ class Turbulence(BasePlugin):
         super().__init__(intg, cfgsect, suffix)
         
         self.restart = restart
-        self.twindowmax = 10.0
         
-        self.comm, self.rank, self.root = get_comm_rank_root()
         constants = self.cfg.items_as('constants', float)
         params = self.cfg.items_as(cfgsect, float)
 
@@ -61,19 +59,15 @@ class Turbulence(BasePlugin):
         for etype, eles in self.mesh:
             self.neles[etype] = eles.neles
 
-
         self.tnext = 0.0
         self.tfull = []
         self.etypeupdate = {}
         for etype in intg.system.ele_map:
             self.etypeupdate[etype] = True
 
-        # new code
-        
         self.tend = 4.0
         
         self.rng = np.random.default_rng(42)
-        self.tadv = {}
         
         ###############
         self.vorts = []
@@ -98,9 +92,9 @@ class Turbulence(BasePlugin):
                 initial = False
             vid += 1
         
-        #############
+        #################################################
         self.lut = defaultdict(lambda: defaultdict(list))
-        #############
+        #################################################
         
         #for etype in intg.system.ele_map:
         #    self.lut[etype] = {}
@@ -151,7 +145,6 @@ class Turbulence(BasePlugin):
         tcurr = intg.tcurr
         
         if tcurr+self.dtmargin >= self.tnext:
-            # cull front of lut
             for etype, eles in self.mesh:
                 for eid in self.lut[etype]:
                     while self.lut[etype][eid] and (self.lut[etype][eid][-1][2] < tcurr):
@@ -164,9 +157,12 @@ class Turbulence(BasePlugin):
                         lutl = len(self.lut[etype][eid])
                         lutlm = min(lutl,self.nvmax)
                         for i in range(lutlm):
-                            temp[i,:,eid] = self.vorts[self.lut[etype][eid][lutl-i][0]] + self.lut[etype][eid][lutl-i][-2:]
-                    adv = np.min(temp[self.nvmax-1,7,:][np.nonzero(temp[self.nvmax-1,7,:])])
-                    # need to hande case where we have run everything towards the end of the run
+                            temp[i,:,eid] = self.vorts[self.lut[etype][eid][lutl-1-i][0]] + self.lut[etype][eid][lutl-1-i][-2:]
+                    tsmax = temp[self.nvmax-1,7,:]
+                    if any(tsmax!=0):
+                        adv = np.min(tsmax[tsmax!=0])
+                    else:
+                        adv = math.inf
                     if adv <= self.tnext:
                         print('Increase nvmax')
                     self.tfull.append({'etype': etype, 't': adv})
@@ -178,7 +174,7 @@ class Turbulence(BasePlugin):
             self.tnext = tf['t']
             self.etypeupdate[tf['etype']] = True
             while self.tfull:
-                if self.tfull[0]['t'] == tf:
+                if self.tfull[0]['t'] <= tf+self.dtmargin:
                     tf = self.tfull.pop(0)
                     self.etypeupdate[tf['etype']] = True
                 else:
