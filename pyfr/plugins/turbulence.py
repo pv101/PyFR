@@ -19,6 +19,9 @@ class Turbulence(BasePlugin):
         super().__init__(intg, cfgsect, suffix)
         
         self.restart = restart
+        self.tnext = 0.0
+        self.tfull = []
+        self.tend = 4.0
         
         constants = self.cfg.items_as('constants', float)
         params = self.cfg.items_as(cfgsect, float)
@@ -55,18 +58,23 @@ class Turbulence(BasePlugin):
         self.mesh = intg.system.ele_map.items()
         
         self.neles = {}
-        
-        for etype, eles in self.mesh:
-            self.neles[etype] = eles.neles
-
-        self.tnext = 0.0
-        self.tfull = []
+        self.eles = {}
         self.etypeupdate = {}
-        for etype in intg.system.ele_map:
-            self.etypeupdate[etype] = True
-
-        self.tend = 4.0
+  
+        bbox = BoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax])
         
+        for etype, eles in intg.system.ele_map.items():
+            self.etypeupdate[etype] = True
+            self.neles[etype] = eles.neles
+            pts = eles.ploc_at_np('upts')
+            pts = np.moveaxis(pts, 1, -1)
+            inside = bbox.pts_in_region(pts)
+            if np.any(inside):
+                self.eles[etype] = np.any(inside, axis=0).nonzero()[0].tolist()
+       
+        if not bool(self.eles):
+           self.tnext = math.inf
+
         self.rng = np.random.default_rng(42)
         
         ###############
@@ -95,22 +103,19 @@ class Turbulence(BasePlugin):
         #################################################
         self.lut = defaultdict(lambda: defaultdict(list))
         #################################################
-        
-        #for etype in intg.system.ele_map:
-        #    self.lut[etype] = {}
             
         for vid, vort in enumerate(self.vorts):
-            for etype, eles in self.mesh:
-                elestemp = []
-                box = BoxRegion([self.xmin,
+            vbox = BoxRegion([self.xmin,
                                  vort[1]-self.ls,
                                  vort[2]-self.ls],
                                 [self.xmax,
                                  vort[1]+self.ls,
-                                 vort[2]+self.ls])                
+                                 vort[2]+self.ls])
+            for etype, eles in self.mesh:
+                elestemp = []               
                 pts = eles.ploc_at_np('upts')
                 pts = np.moveaxis(pts, 1, -1)
-                inside = box.pts_in_region(pts)
+                inside = vbox.pts_in_region(pts)
 
                 if np.any(inside):
                     elestemp = np.any(inside, axis=0).nonzero()[0].tolist()
@@ -122,7 +127,7 @@ class Turbulence(BasePlugin):
                     te = ts + (exmax-exmin+2*self.ls)/self.ubar   
                     self.lut[etype][eid].append([vid,ts,te])
         
-        for etype, eles in self.mesh:
+        for etype in self.eles:
            for v in self.lut[etype].values():
                v.sort(key=lambda x: x[1],reverse=True)
 
@@ -130,12 +135,12 @@ class Turbulence(BasePlugin):
         self.acteddy = acteddy = {}
         ###########################
         
-        for etype, eles in self.mesh:
+        for etype in self.eles:
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
             {'nvmax': nvmax, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
              'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
              'sigma' : sigma, 'rs': rs, 'gc': gc})
-            acteddy[etype] = eles._be.matrix((nvmax, nparams, eles.neles), tags={'align'})
+            acteddy[etype] = eles._be.matrix((nvmax, nparams, self.neles[etype]), tags={'align'})
             eles._set_external('acteddy',
                                f'in broadcast-col fpdtype_t[{nvmax}][{nparams}]',
                                value=acteddy[etype])
@@ -145,7 +150,7 @@ class Turbulence(BasePlugin):
         tcurr = intg.tcurr
         
         if tcurr+self.dtmargin >= self.tnext:
-            for etype, eles in self.mesh:
+            for etype in self.eles:
                 for eid in self.lut[etype]:
                     while self.lut[etype][eid] and (self.lut[etype][eid][-1][2] < tcurr):
                         self.lut[etype][eid].pop()
