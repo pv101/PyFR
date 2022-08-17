@@ -54,11 +54,10 @@ class Turbulence(BasePlugin):
 
         self.nvmax = nvmax = 20
         self.nparams = nparams = 9
-
-        self.mesh = intg.system.ele_map.items()
         
         self.neles = {}
         self.eles = {}
+        self.pts = {}
         self.etypeupdate = {}
   
         bbox = BoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax])
@@ -68,9 +67,15 @@ class Turbulence(BasePlugin):
             self.neles[etype] = eles.neles
             pts = eles.ploc_at_np('upts')
             pts = np.moveaxis(pts, 1, -1)
+            #print(pts.shape)
             inside = bbox.pts_in_region(pts)
+            #print(np.any(inside, axis=0).nonzero()[0])
             if np.any(inside):
-                self.eles[etype] = np.any(inside, axis=0).nonzero()[0].tolist()
+                eids = np.any(inside, axis=0).nonzero()[0]
+                self.eles[etype] = eids
+                self.pts[etype] = pts[:,eids,:]
+                print(self.eles[etype])
+                print(self.pts[etype].shape)
        
         if not bool(self.eles):
            self.tnext = math.inf
@@ -111,14 +116,14 @@ class Turbulence(BasePlugin):
                                 [self.xmax,
                                  vort[1]+self.ls,
                                  vort[2]+self.ls])
-            for etype, eles in self.mesh:
+            for etype, eles in self.eles.items():
                 elestemp = []               
-                pts = eles.ploc_at_np('upts')
-                pts = np.moveaxis(pts, 1, -1)
+                pts = self.pts[etype]
                 inside = vbox.pts_in_region(pts)
 
                 if np.any(inside):
-                    elestemp = np.any(inside, axis=0).nonzero()[0].tolist()
+                    elestemp = np.any(inside, axis=0).nonzero()[0].tolist() # box local indexing
+                    #print("Doing a vortex")
                     
                 for eid in elestemp:
                     exmin = pts[:,eid,0].min()
@@ -136,6 +141,7 @@ class Turbulence(BasePlugin):
         ###########################
         
         for etype in self.eles:
+            eles = intg.system.ele_map[etype]
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
             {'nvmax': nvmax, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
              'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
@@ -162,7 +168,7 @@ class Turbulence(BasePlugin):
                         lutl = len(self.lut[etype][eid])
                         lutlm = min(lutl,self.nvmax)
                         for i in range(lutlm):
-                            temp[i,:,eid] = self.vorts[self.lut[etype][eid][lutl-1-i][0]] + self.lut[etype][eid][lutl-1-i][-2:]
+                            temp[i,:,self.eles[etype][eid]] = self.vorts[self.lut[etype][eid][lutl-1-i][0]] + self.lut[etype][eid][lutl-1-i][-2:]
                     tsmax = temp[self.nvmax-1,7,:]
                     if any(tsmax!=0):
                         adv = np.min(tsmax[tsmax!=0])
