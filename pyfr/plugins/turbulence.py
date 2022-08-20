@@ -134,7 +134,7 @@ class Turbulence(BasePlugin):
         
         for etype in self.eles:
            for v in self.lut[etype].values():
-               v.sort(key=lambda x: x[1],reverse=True)
+               v.sort(key=lambda x: x[1])
 
         ###########################
         self.acteddy = acteddy = {}
@@ -155,20 +155,19 @@ class Turbulence(BasePlugin):
         
         tcurr = intg.tcurr
         
-        if tcurr+self.dtmargin >= self.tnext:
-            for etype in self.eles:
-                for eid in self.lut[etype]:
-                    while self.lut[etype][eid] and (self.lut[etype][eid][-1][2] < tcurr):
-                        self.lut[etype][eid].pop()
-                           
-            for etype, neles in self.neles.items():      
+        if tcurr+self.dtmargin >= self.tnext:            
+            for etype, luts in self.lut.items():      
                 if self.etypeupdate[etype]:
-                    temp = np.zeros((self.nvmax, self.nparams, neles))
-                    for eid, lut in self.lut[etype].items:
-                        lutl = len(lut)
-                        lutlm = min(lutl,self.nvmax)
-                        for i in range(lutlm):
-                            temp[i,:,self.eles[etype][eid]] = self.vorts[lut[lutl-1-i][0]] + lut[lutl-1-i][-2:]
+                    for lut in luts.values():
+                        idx = next((i for i,x in enumerate(lut) if x[2] > tcurr),len(lut))
+                        del lut[:idx]
+                    temp = np.zeros((self.nvmax, self.nparams, self.neles[etype]))
+                    for leid, lut in luts.items():
+                        geid = self.eles[etype][leid]
+                        for i, act in enumerate(lut):
+                            temp[i,:,geid] = self.vorts[act[0]] + act[-2:]
+                            if i == self.nvmax-1:
+                                break
                     tsmax = temp[self.nvmax-1,7,:]
                     if any(tsmax!=0):
                         adv = np.min(tsmax[tsmax!=0])
