@@ -164,11 +164,11 @@ class Turbulence(BasePlugin):
             for etype, neles in self.neles.items():      
                 if self.etypeupdate[etype]:
                     temp = np.zeros((self.nvmax, self.nparams, neles))
-                    for eid in self.lut[etype]:
-                        lutl = len(self.lut[etype][eid])
+                    for eid, lut in self.lut[etype].items:
+                        lutl = len(lut)
                         lutlm = min(lutl,self.nvmax)
                         for i in range(lutlm):
-                            temp[i,:,self.eles[etype][eid]] = self.vorts[self.lut[etype][eid][lutl-1-i][0]] + self.lut[etype][eid][lutl-1-i][-2:]
+                            temp[i,:,self.eles[etype][eid]] = self.vorts[lut[lutl-1-i][0]] + lut[lutl-1-i][-2:]
                     tsmax = temp[self.nvmax-1,7,:]
                     if any(tsmax!=0):
                         adv = np.min(tsmax[tsmax!=0])
