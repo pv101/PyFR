@@ -59,6 +59,7 @@ class Turbulence(BasePlugin):
         self.eles = {}
         self.pts = {}
         self.etypeupdate = {}
+        
   
         bbox = BoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax])
         
@@ -74,8 +75,6 @@ class Turbulence(BasePlugin):
                 eids = np.any(inside, axis=0).nonzero()[0]
                 self.eles[etype] = eids
                 self.pts[etype] = pts[:,eids,:]
-                print(self.eles[etype])
-                print(self.pts[etype].shape)
        
         if not bool(self.eles):
            self.tnext = math.inf
