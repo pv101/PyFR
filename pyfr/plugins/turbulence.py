@@ -7,7 +7,7 @@ import uuid
 
 from collections import defaultdict
 from pyfr.plugins.base import BasePlugin
-from pyfr.regions import BoxRegion
+from pyfr.regions import BoxRegion, RotatedBoxRegion
 from pyfr.mpiutil import get_comm_rank_root
 
 class Turbulence(BasePlugin):
@@ -59,18 +59,15 @@ class Turbulence(BasePlugin):
         self.eles = {}
         self.pts = {}
         self.etypeupdate = {}
-        
   
-        bbox = BoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax])
+        bbox = RotatedBoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax],[0,0,1],[0.5,0.5,0.5],0)
         
         for etype, eles in intg.system.ele_map.items():
             self.etypeupdate[etype] = True
             self.neles[etype] = eles.neles
             pts = eles.ploc_at_np('upts')
             pts = np.moveaxis(pts, 1, -1)
-            #print(pts.shape)
             inside = bbox.pts_in_region(pts)
-            #print(np.any(inside, axis=0).nonzero()[0])
             if np.any(inside):
                 eids = np.any(inside, axis=0).nonzero()[0]
                 self.eles[etype] = eids

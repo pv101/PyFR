@@ -180,7 +180,48 @@ class BoxRegion(BaseGeometricRegion):
 
         return inside
 
+class RotatedBoxRegion(BaseGeometricRegion):
+    name = 'box'
 
+    def __init__(self, x0, x1, e, c, theta):
+        self.x0 = x0
+        self.x1 = x1
+        
+        theta = -1.0*np.radians(theta)
+        
+        qi = e[0]*np.sin(theta/2) 
+        qj = e[1]*np.sin(theta/2)
+        qk = e[2]*np.sin(theta/2)
+        qr = np.cos(theta/2)
+        
+        a11 = 1.0 - 2.0*qj*qj - 2.0*qk*qk
+        a12 = 2.0*(qi*qj - qk*qr)
+        a13 = 2.0*(qi*qk + qj*qr)
+        a21 = 2.0*(qi*qj + qk*qr)
+        a22 = 1.0 - 2.0*qi*qi - 2.0*qk*qk
+        a23 = 2.0*(qj*qk - qi*qr)
+        a31 = 2.0*(qi*qk - qj*qr)
+        a32 = 2.0*(qj*qk + qi*qr)
+        a33 = 1.0 - 2.0*qi*qi - 2.0*qj*qj
+        
+        self.rot = np.array([[a11, a12, a13], [a21, a22, a23], [a31, a32, a33]])
+        self.shift = np.array([-c[0], -c[1], -c[2]])
+        
+        print(self.rot)
+        print(self.shift)
+        
+        #https://en.wikipedia.org/wiki/Rotation_formalisms_in_three_dimensions
+
+    def pts_in_region(self, pts):
+        pts = np.moveaxis(pts, -1, 0)
+        inside = np.ones(pts.shape[1:], dtype=np.bool)
+        nspts = pts.shape[1]
+        pts = (self.rot @ (pts.reshape(3, -1) + self.shift[:,np.newaxis])).reshape(3,nspts,-1)
+        for l, p, u in zip(self.x0, pts, self.x1):
+            inside &= (l <= p) & (p <= u)
+
+        return inside
+        
 class ConicalFrustumRegion(BaseGeometricRegion):
     name = 'conical_frustum'
 
