@@ -40,7 +40,30 @@ class Turbulence(BasePlugin):
         self.ymax = ymax = params['y-max']
         self.zmin = zmin = params['z-min']
         self.zmax = zmax = params['z-max']
-
+        
+        self.e = [0,0,1]
+        self.c = [0.5,0.5,0.5]
+        self.theta = 0
+        
+        theta = 1.0*np.radians(self.theta)
+        
+        qi = self.e[0]*np.sin(theta/2) 
+        qj = self.e[1]*np.sin(theta/2)
+        qk = self.e[2]*np.sin(theta/2)
+        qr = np.cos(theta/2)
+        
+        a11 = 1.0 - 2.0*qj*qj - 2.0*qk*qk
+        a12 = 2.0*(qi*qj - qk*qr)
+        a13 = 2.0*(qi*qk + qj*qr)
+        a21 = 2.0*(qi*qj + qk*qr)
+        a22 = 1.0 - 2.0*qi*qi - 2.0*qk*qk
+        a23 = 2.0*(qj*qk - qi*qr)
+        a31 = 2.0*(qi*qk - qj*qr)
+        a32 = 2.0*(qj*qk + qi*qr)
+        a33 = 1.0 - 2.0*qi*qi - 2.0*qj*qj
+        
+        self.rot = np.array([[a11, a12, a13], [a21, a22, a23], [a31, a32, a33]])
+        
         self.srafac = srafac = rhobar*(constants['gamma']-1.0)*machbar*machbar
         self.gc = gc = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
         self.nvorts = nvorts = int((ymax-ymin)*(zmax-zmin)/(4*self.ls*self.ls))
@@ -60,7 +83,7 @@ class Turbulence(BasePlugin):
         self.pts = {}
         self.etypeupdate = {}
   
-        bbox = RotatedBoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax],[0,0,1],[0.5,0.5,0.5],0)
+        bbox = RotatedBoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax],self.e,self.c,self.theta)
         
         for etype, eles in intg.system.ele_map.items():
             self.etypeupdate[etype] = True
@@ -106,20 +129,18 @@ class Turbulence(BasePlugin):
         #################################################
             
         for vid, vort in enumerate(self.vorts):
-            vbox = BoxRegion([self.xmin,
+            vbox = RotatedBoxRegion([self.xmin,
                                  vort[1]-self.ls,
                                  vort[2]-self.ls],
                                 [self.xmax,
                                  vort[1]+self.ls,
-                                 vort[2]+self.ls])
-            for etype, eles in self.eles.items():
+                                 vort[2]+self.ls], self.e, self.c, self.theta)
+            for etype, pts in self.pts.items():
                 elestemp = []               
-                pts = self.pts[etype]
                 inside = vbox.pts_in_region(pts)
 
                 if np.any(inside):
                     elestemp = np.any(inside, axis=0).nonzero()[0].tolist() # box local indexing
-                    #print("Doing a vortex")
                     
                 for eid in elestemp:
                     exmin = pts[:,eid,0].min()
@@ -127,9 +148,9 @@ class Turbulence(BasePlugin):
                     ts = max(vort[3], vort[3] + ((exmin - vort[0] - self.ls)/self.ubar))
                     te = ts + (exmax-exmin+2*self.ls)/self.ubar   
                     self.lut[etype][eid].append([vid,ts,te])
-        
-        for etype in self.eles:
-           for v in self.lut[etype].values():
+               
+        for luts in self.lut.values():
+           for v in luts.values():
                v.sort(key=lambda x: x[1])
 
         ###########################
@@ -161,7 +182,8 @@ class Turbulence(BasePlugin):
                     for leid, lut in luts.items():
                         geid = self.eles[etype][leid]
                         for i, act in enumerate(lut):
-                            temp[i,:,geid] = self.vorts[act[0]] + act[-2:]
+                            #temp[i,:,geid] = (self.rot @ (self.vorts[act[0]][:3] - self.c) + self.c) + self.vorts[act[0]][-4:] + act[-2:]
+                            temp[i,:,geid] = self.vorts[act[0]][:3] + self.vorts[act[0]][-4:] + act[-2:]
                             if i == self.nvmax-1:
                                 break
                     tsmax = temp[self.nvmax-1,7,:]
