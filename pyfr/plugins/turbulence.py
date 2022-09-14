@@ -20,9 +20,9 @@ class Turbulence(BasePlugin):
         
         self.restart = restart
         self.tnext = 0.0
-        self.tfull = []
+        self.tfull = {}
         self.tend = 4.0
-        
+
         constants = self.cfg.items_as('constants', float)
         params = self.cfg.items_as(cfgsect, float)
 
@@ -82,10 +82,13 @@ class Turbulence(BasePlugin):
         self.eles = {}
         self.pts = {}
         self.etypeupdate = {}
+        self.temp = {}
   
         bbox = RotatedBoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax],self.e,self.c,self.theta)
         
         for etype, eles in intg.system.ele_map.items():
+            self.tfull[etype] = 0.0
+            self.temp[etype] = np.full((self.nvmax, self.nparams, eles.neles), 0.0)
             self.etypeupdate[etype] = True
             self.neles[etype] = eles.neles
             pts = eles.ploc_at_np('upts')
@@ -172,39 +175,48 @@ class Turbulence(BasePlugin):
         
         tcurr = intg.tcurr
         
-        if tcurr+self.dtmargin >= self.tnext:            
-            for etype, luts in self.lut.items():      
-                if self.etypeupdate[etype]:
-                    for lut in luts.values():
-                        idx = next((i for i,x in enumerate(lut) if x[2] > tcurr),len(lut))
-                        del lut[:idx]
-                    temp = np.zeros((self.nvmax, self.nparams, self.neles[etype]))
+        if tcurr+self.dtmargin >= self.tnext: 
+            for etype, luts in self.lut.items(): 
+                if self.tfull[etype] <= self.tnext: 
                     for leid, lut in luts.items():
-                        geid = self.eles[etype][leid]
-                        for i, act in enumerate(lut):
-                            #temp[i,:,geid] = (self.rot @ (self.vorts[act[0]][:3] - self.c) + self.c) + self.vorts[act[0]][-4:] + act[-2:]
-                            temp[i,:,geid] = self.vorts[act[0]][:3] + self.vorts[act[0]][-4:] + act[-2:]
-                            if i == self.nvmax-1:
-                                break
-                    tsmax = temp[self.nvmax-1,7,:]
+                        if lut:
+                            geid = self.eles[etype][leid]
+                            idx = next((i for i,x in enumerate(self.temp[etype][:,8,geid]) if x > tcurr),len(self.temp[etype][:,8,geid]))
+                            #print("HELLO")
+                            #print(idx)
+                            self.temp[etype][:,:,geid] = np.roll(self.temp[etype][:,:,geid], -idx, axis=0)
+                            #print(self.temp[etype][:,:,geid])
+                            front = np.array(lut[:idx])
+                            fronti = front[:,0].astype(int)
+                            #print(fronti)
+                            del self.lut[etype][leid][:idx]
+                            #print(front[:,-2:])
+                            vortnp = np.array(self.vorts)
+                            #print(vortnp.shape)
+                            selvorts = vortnp[fronti,:]
+                            #print(selvorts.shape)
+                            #print(front[:,-2:].shape)
+                            add = np.concatenate((selvorts, front[:,-2:]), axis=1)
+                            add = np.pad(add, [(0,idx-add.shape[0]),(0,0)], 'constant')
+                            #print(add.shape)
+                            #print(self.temp[etype][-idx:,:,geid].shape)
+                            self.temp[etype][-idx:,:,geid] = add
+                        
+                    tsmax = self.temp[etype][self.nvmax-1,7,:]
                     if any(tsmax!=0):
                         adv = np.min(tsmax[tsmax!=0])
                     else:
                         adv = math.inf
                     if adv <= self.tnext:
                         print('Increase nvmax')
-                    self.tfull.append({'etype': etype, 't': adv})
-                    self.acteddy[etype].set(temp)
-                    self.etypeupdate[etype] = False
+
+                    self.tfull[etype] = adv
+
+                    self.acteddy[etype].set(self.temp[etype])
+                    comm, rank, root = get_comm_rank_root()
+                    print(rank)
+                    print(adv)
                     
-            self.tfull.sort(key=lambda x: x["t"])        
-            tf = self.tfull.pop(0)
-            self.tnext = tf['t']
-            self.etypeupdate[tf['etype']] = True
-            while self.tfull:
-                if self.tfull[0]['t'] <= tf+self.dtmargin:
-                    tf = self.tfull.pop(0)
-                    self.etypeupdate[tf['etype']] = True
-                else:
-                    break
-                    
+            self.tnext = min(val for val in self.tfull.values())
+            
+               

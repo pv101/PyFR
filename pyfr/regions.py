@@ -207,8 +207,8 @@ class RotatedBoxRegion(BaseGeometricRegion):
         self.rot = np.array([[a11, a12, a13], [a21, a22, a23], [a31, a32, a33]])
         self.shift = np.array([-c[0], -c[1], -c[2]])
         
-        print(self.rot)
-        print(self.shift)
+        #print(self.rot)
+        #print(self.shift)
         
         #https://en.wikipedia.org/wiki/Rotation_formalisms_in_three_dimensions
 
