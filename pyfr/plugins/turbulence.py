@@ -17,11 +17,14 @@ class Turbulence(BasePlugin):
 
     def __init__(self, intg, cfgsect, suffix, restart=False):
         super().__init__(intg, cfgsect, suffix)
+
+        comm, rank, root = get_comm_rank_root()
+        print(rank)
         
         self.restart = restart
         self.tnext = 0.0
         self.tfull = {}
-        self.tend = 4.0
+        self.tend = 1.0
 
         constants = self.cfg.items_as('constants', float)
         params = self.cfg.items_as(cfgsect, float)
@@ -67,6 +70,8 @@ class Turbulence(BasePlugin):
         self.srafac = srafac = rhobar*(constants['gamma']-1.0)*machbar*machbar
         self.gc = gc = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
         self.nvorts = nvorts = int((ymax-ymin)*(zmax-zmin)/(4*self.ls*self.ls))
+
+        print(f'nvorts {self.nvorts}')
         
         self.dtmargin = 0
         
@@ -96,6 +101,7 @@ class Turbulence(BasePlugin):
             inside = bbox.pts_in_region(pts)
             if np.any(inside):
                 eids = np.any(inside, axis=0).nonzero()[0]
+                print(eids)
                 self.eles[etype] = eids
                 self.pts[etype] = pts[:,eids,:]
        
@@ -161,6 +167,8 @@ class Turbulence(BasePlugin):
         ###########################
         
         for etype in self.eles:
+            comm, rank, root = get_comm_rank_root()
+            print(f'adding kernels for rank {rank}')
             eles = intg.system.ele_map[etype]
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
             {'nvmax': nvmax, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
@@ -175,32 +183,32 @@ class Turbulence(BasePlugin):
         
         tcurr = intg.tcurr
         
-        if tcurr+self.dtmargin >= self.tnext: 
+        if tcurr+self.dtmargin >= self.tnext:
             for etype, luts in self.lut.items(): 
                 if self.tfull[etype] <= self.tnext: 
                     for leid, lut in luts.items():
                         if lut:
                             geid = self.eles[etype][leid]
                             idx = next((i for i,x in enumerate(self.temp[etype][:,8,geid]) if x > tcurr),len(self.temp[etype][:,8,geid]))
-                            #print("HELLO")
-                            #print(idx)
+                            
                             self.temp[etype][:,:,geid] = np.roll(self.temp[etype][:,:,geid], -idx, axis=0)
-                            #print(self.temp[etype][:,:,geid])
+                           
                             front = np.array(lut[:idx])
                             fronti = front[:,0].astype(int)
-                            #print(fronti)
+                        
                             del self.lut[etype][leid][:idx]
-                            #print(front[:,-2:])
+                            
                             vortnp = np.array(self.vorts)
-                            #print(vortnp.shape)
+                            
                             selvorts = vortnp[fronti,:]
-                            #print(selvorts.shape)
-                            #print(front[:,-2:].shape)
+                            
                             add = np.concatenate((selvorts, front[:,-2:]), axis=1)
                             add = np.pad(add, [(0,idx-add.shape[0]),(0,0)], 'constant')
-                            #print(add.shape)
-                            #print(self.temp[etype][-idx:,:,geid].shape)
+                            print(f'add shape {add.shape}')
+                            print(f'temp shape {self.temp[etype][:,:,geid].shape}')
                             self.temp[etype][-idx:,:,geid] = add
+                            print(self.temp[etype][:,:,geid])
+                            print(f'temp shape after add {self.temp[etype][:,:,geid].shape}')
                         
                     tsmax = self.temp[etype][self.nvmax-1,7,:]
                     if any(tsmax!=0):
@@ -217,6 +225,4 @@ class Turbulence(BasePlugin):
                     print(rank)
                     print(adv)
                     
-            self.tnext = min(val for val in self.tfull.values())
-            
-               
+            self.tnext = min(val for val in self.tfull.values()) 
