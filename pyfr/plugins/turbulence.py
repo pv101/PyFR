@@ -19,12 +19,14 @@ class Turbulence(BasePlugin):
         super().__init__(intg, cfgsect, suffix)
 
         comm, rank, root = get_comm_rank_root()
-        print(rank)
+        #print(rank)
         
         self.restart = restart
         self.tnext = 0.0
         self.tfull = {}
         self.tend = 1.0
+
+        self.drtol = 0.1
 
         constants = self.cfg.items_as('constants', float)
         params = self.cfg.items_as(cfgsect, float)
@@ -80,7 +82,7 @@ class Turbulence(BasePlugin):
         else:
             self.dtmargin = intg._dt
 
-        self.nvmax = nvmax = 20
+        #self.nvmax = nvmax = 20
         self.nparams = nparams = 9
         
         self.neles = {}
@@ -102,7 +104,6 @@ class Turbulence(BasePlugin):
                 self.eles[etype] = eids
                 self.pts[etype] = pts[:,eids,:]
                 self.tfull[etype] = 0.0
-                self.temp[etype] = np.full((self.nvmax, self.nparams, eles.neles), 0.0)
                 self.neles[etype] = eles.neles
        
         if not bool(self.eles):
@@ -116,6 +117,7 @@ class Turbulence(BasePlugin):
         
         vid = 0
         while vid <= self.nvorts:
+            #print(f'making vort history {vid}')
             t = 0.0
             initial = True
             while t < self.tend:
@@ -144,6 +146,7 @@ class Turbulence(BasePlugin):
                                 [self.xmax,
                                  vort[1]+self.ls,
                                  vort[2]+self.ls])
+            #print(f'Adding vort {vid} to lut')
             for etype, pts in self.pts.items():
                 elestemp = []               
                 inside = vbox.pts_in_region(pts)
@@ -162,6 +165,9 @@ class Turbulence(BasePlugin):
            for v in luts.values():
                v.sort(key=lambda x: x[1])
 
+        self.nvmaxauto = self.dryrun()
+        print(self.nvmaxauto)
+
         ###########################
         self.acteddy = acteddy = {}
         ###########################
@@ -170,14 +176,33 @@ class Turbulence(BasePlugin):
             comm, rank, root = get_comm_rank_root()
             print(f'adding kernels for rank {rank}')
             eles = intg.system.ele_map[etype]
+            self.temp[etype] = np.full((self.nvmaxauto[etype], self.nparams, eles.neles), 0.0)
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
-            {'nvmax': nvmax, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
+            {'nvmax': self.nvmaxauto[etype], 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
              'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
              'sigma' : sigma, 'rs': rs, 'gc': gc})
-            acteddy[etype] = eles._be.matrix((nvmax, nparams, self.neles[etype]), tags={'align'})
+            acteddy[etype] = eles._be.matrix((self.nvmaxauto[etype], nparams, self.neles[etype]), tags={'align'})
             eles._set_external('acteddy',
-                               f'in broadcast-col fpdtype_t[{nvmax}][{nparams}]',
+                               f'in broadcast-col fpdtype_t[{self.nvmaxauto[etype]}][{nparams}]',
                                value=acteddy[etype])
+
+    def dryrun(self):
+        nvmaxmin = {}
+        comm, rank, root = get_comm_rank_root()
+        for etype, luts in self.lut.items():
+            nvmaxmin[etype] = 0
+            for leid, lut in luts.items():
+                for i, act in enumerate(lut):
+                    ifidx = next((j for j,x in enumerate(lut) if x[1] > act[2]+self.drtol),0)
+                    if ifidx:
+                        tot = ifidx - i + 1
+                    else:
+                        tot = len(lut) - i
+                    if tot > nvmaxmin[etype]:
+                        #print(tot)
+                        nvmaxmin[etype] = tot
+            #print(f'nvmaxmin for {etype} on rank {rank} is {nvmaxmin[etype]}')
+        return nvmaxmin
                           
     def __call__(self, intg):
         
@@ -189,14 +214,13 @@ class Turbulence(BasePlugin):
                     maxadv = np.inf
                     for leid, lut in luts.items():
                         if lut:
-                            #print(lut)
                             geid = self.eles[etype][leid]
                             idx = next((i for i,x in enumerate(self.temp[etype][:,8,geid]) if x > tcurr),len(self.temp[etype][:,8,geid]))
                             if idx:
                                 self.temp[etype][:,:,geid] = np.roll(self.temp[etype][:,:,geid], -idx, axis=0)
                                
                                 front = np.array(lut[:idx])
-                                #print(f'idx is {idx}')
+
                                 fronti = front[:,0].astype(int)
                             
                                 del self.lut[etype][leid][:idx]
@@ -207,20 +231,16 @@ class Turbulence(BasePlugin):
                                 
                                 add = np.concatenate((selvorts, front[:,-2:]), axis=1)
                                 add = np.pad(add, [(0,idx-add.shape[0]),(0,0)], 'constant')
-                                #print(f'add shape {add.shape}')
-                                #print(f'temp shape {self.temp[etype][:,:,geid].shape}')
+
                                 self.temp[etype][-idx:,:,geid] = add
 
-                                if self.lut[etype][leid] and (self.temp[etype][self.nvmax-1,7,geid] < maxadv):
-                                    #print(self.temp[etype][self.nvmax-1,7,geid])
-                                    maxadv = self.temp[etype][self.nvmax-1,7,geid]
+                                # if there is something left to add from lut check when we need to come
+                                if self.lut[etype][leid] and (self.temp[etype][-1,7,geid] < maxadv):
+                                    
+                                    maxadv = self.temp[etype][-1,7,geid]
 
-
-                                #print(self.temp[etype][:,:,geid])
-                                #print(f'temp shape after add {self.temp[etype][:,:,geid].shape}')
-                        
                     if maxadv <= self.tnext:
-                        print('Increase nvmax')
+                        print('ERROR, nvmax too small')
 
                     self.tfull[etype] = maxadv
 
