@@ -17,9 +17,6 @@ class Turbulence(BasePlugin):
 
     def __init__(self, intg, cfgsect, suffix, restart=False):
         super().__init__(intg, cfgsect, suffix)
-
-        comm, rank, root = get_comm_rank_root()
-        #print(rank)
         
         self.restart = restart
         self.tnext = 0.0
@@ -222,35 +219,18 @@ class Turbulence(BasePlugin):
                             geid = self.eles[etype][leid]
                             shift = next((i for i,x in enumerate(self.temp[etype][:,8,geid]) if x > tcurr),self.nvmaxauto[etype])
                             if shift:
-                                # concatenate vortex data with ts and te
                                 add = np.concatenate((self.vdat[lut['vidx'][:shift],:], lut['vtim'][:shift,:]), axis=1)
 
-                                # pad with zeros if required
                                 if add.shape[0] < shift:
                                     add = np.pad(add, [(0,shift-add.shape[0]),(0,0)], 'constant')
-                                
-                                # roll data we can remove to the back
-                                self.temp[etype][:,:,geid] = np.roll(self.temp[etype][:,:,geid], -shift, axis=0)
+                           
+                                self.temp[etype][:,:,geid] = np.concatenate((self.temp[etype][shift:,:,geid],add))
 
-                                # overwrite the end of temp
-                                self.temp[etype][-shift:,:,geid] = add
-
-                                # delete from lut
-                                #self.lut[etype][leid]['vidx'] = self.lut[etype][leid]['vidx'][shift:]
-                                #self.lut[etype][leid]['vtim'] = self.lut[etype][leid]['vtim'][shift:,:]
-
-                                #if self.lut[etype][leid]['vidx'].any() and (self.temp[etype][-1,7,geid] < maxadv):
-                                #    maxadv = self.temp[etype][-1,7,geid]
-
-                                # delete from lut
                                 lut['vidx'] = lut['vidx'][shift:]
                                 lut['vtim'] = lut['vtim'][shift:,:]
 
                                 if lut['vidx'].any() and (self.temp[etype][-1,7,geid] < maxadv):
                                     maxadv = self.temp[etype][-1,7,geid]
-
-                    if maxadv <= self.tnext:
-                        print('ERROR, nvmax too small')
 
                     self.tfull[etype] = maxadv
                     self.acteddy[etype].set(self.temp[etype])
