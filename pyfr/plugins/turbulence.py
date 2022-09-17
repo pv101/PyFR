@@ -73,8 +73,6 @@ class Turbulence(BasePlugin):
         self.gc = gc = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
         self.nvorts = nvorts = int((ymax-ymin)*(zmax-zmin)/(4*self.ls*self.ls))
 
-        print(f'nvorts {self.nvorts}')
-        
         self.dtmargin = 0
         
         if hasattr(intg, 'dtmax'):
@@ -82,7 +80,6 @@ class Turbulence(BasePlugin):
         else:
             self.dtmargin = intg._dt
 
-        #self.nvmax = nvmax = 20
         self.nparams = nparams = 9
         
         self.neles = {}
@@ -111,13 +108,13 @@ class Turbulence(BasePlugin):
 
         self.rng = np.random.default_rng(42)
         
-        ###############
-        self.vorts = []
-        ###############
+        #################
+        # Make vortices #
+        #################
         
         vid = 0
+        temp = []
         while vid <= self.nvorts:
-            #print(f'making vort history {vid}')
             t = 0.0
             initial = True
             while t < self.tend:
@@ -130,23 +127,26 @@ class Turbulence(BasePlugin):
                 epsx = self.rng.choice([-1,1])
                 epsy = self.rng.choice([-1,1])
                 epsz = self.rng.choice([-1,1])
-                self.vorts.append([xinit,yinit,zinit,t,epsx,epsy,epsz])
+                temp.append([xinit,yinit,zinit,t,epsx,epsy,epsz])
                 t += (self.xmax-xinit)/self.ubar
                 initial = False
             vid += 1
+
+        self.vdat = np.asarray(temp)
+
+        #################
+        # Make luts #
+        #################
         
-        #################################################
-        self.lut = defaultdict(lambda: defaultdict(list))
-        #################################################
+        ttlut = defaultdict(lambda: defaultdict(list))
             
-        for vid, vort in enumerate(self.vorts):
+        for vid, vort in enumerate(self.vdat):
             vbox = BoxRegion([self.xmin,
                                  vort[1]-self.ls,
                                  vort[2]-self.ls],
                                 [self.xmax,
                                  vort[1]+self.ls,
                                  vort[2]+self.ls])
-            #print(f'Adding vort {vid} to lut')
             for etype, pts in self.pts.items():
                 elestemp = []               
                 inside = vbox.pts_in_region(pts)
@@ -159,18 +159,23 @@ class Turbulence(BasePlugin):
                     exmax = pts[:,eid,0].max()
                     ts = max(vort[3], vort[3] + ((exmin - vort[0] - self.ls)/self.ubar))
                     te = ts + (exmax-exmin+2*self.ls)/self.ubar   
-                    self.lut[etype][eid].append([vid,ts,te])
+                    ttlut[etype][eid].append([vid,ts,te])
                
-        for luts in self.lut.values():
+        for luts in ttlut.values():
            for v in luts.values():
                v.sort(key=lambda x: x[1])
 
-        self.nvmaxauto = self.dryrun()
-        print(self.nvmaxauto)
+        self.lut = defaultdict(lambda: defaultdict(dict))
 
-        ###########################
+        for k,v in ttlut.items():
+            for kk, vv in v.items():
+                nvv = np.array(vv) 
+                self.lut[k][kk]['vidx'] = nvv[:,0].astype(int)
+                self.lut[k][kk]['vtim'] = nvv[:,-2:] 
+
+        self.nvmaxauto = self.dryrun()
+
         self.acteddy = acteddy = {}
-        ###########################
         
         for etype in self.eles:
             comm, rank, root = get_comm_rank_root()
@@ -192,8 +197,8 @@ class Turbulence(BasePlugin):
         for etype, luts in self.lut.items():
             nvmaxmin[etype] = 0
             for leid, lut in luts.items():
-                for i, act in enumerate(lut):
-                    ifidx = next((j for j,x in enumerate(lut) if x[1] > act[2]+self.drtol),0)
+                for i, act in enumerate(lut['vtim'][:,1]):
+                    ifidx = next((j for j,x in enumerate(lut['vtim'][:,0]) if x > act+self.drtol),0)
                     if ifidx:
                         tot = ifidx - i + 1
                     else:
@@ -201,7 +206,7 @@ class Turbulence(BasePlugin):
                     if tot > nvmaxmin[etype]:
                         #print(tot)
                         nvmaxmin[etype] = tot
-            #print(f'nvmaxmin for {etype} on rank {rank} is {nvmaxmin[etype]}')
+            print(f'nvmaxmin for {etype} on rank {rank} is {nvmaxmin[etype]}')
         return nvmaxmin
                           
     def __call__(self, intg):
@@ -213,41 +218,41 @@ class Turbulence(BasePlugin):
                 if self.tfull[etype] <= self.tnext:
                     maxadv = np.inf
                     for leid, lut in luts.items():
-                        if lut:
+                        if lut['vidx'].any():
                             geid = self.eles[etype][leid]
-                            idx = next((i for i,x in enumerate(self.temp[etype][:,8,geid]) if x > tcurr),len(self.temp[etype][:,8,geid]))
-                            if idx:
-                                self.temp[etype][:,:,geid] = np.roll(self.temp[etype][:,:,geid], -idx, axis=0)
-                               
-                                front = np.array(lut[:idx])
+                            shift = next((i for i,x in enumerate(self.temp[etype][:,8,geid]) if x > tcurr),self.nvmaxauto[etype])
+                            if shift:
+                                # concatenate vortex data with ts and te
+                                add = np.concatenate((self.vdat[lut['vidx'][:shift],:], lut['vtim'][:shift,:]), axis=1)
 
-                                fronti = front[:,0].astype(int)
-                            
-                                del self.lut[etype][leid][:idx]
+                                # pad with zeros if required
+                                if add.shape[0] < shift:
+                                    add = np.pad(add, [(0,shift-add.shape[0]),(0,0)], 'constant')
                                 
-                                vortnp = np.array(self.vorts)
-                                
-                                selvorts = vortnp[fronti,:]
-                                
-                                add = np.concatenate((selvorts, front[:,-2:]), axis=1)
-                                add = np.pad(add, [(0,idx-add.shape[0]),(0,0)], 'constant')
+                                # roll data we can remove to the back
+                                self.temp[etype][:,:,geid] = np.roll(self.temp[etype][:,:,geid], -shift, axis=0)
 
-                                self.temp[etype][-idx:,:,geid] = add
+                                # overwrite the end of temp
+                                self.temp[etype][-shift:,:,geid] = add
 
-                                # if there is something left to add from lut check when we need to come
-                                if self.lut[etype][leid] and (self.temp[etype][-1,7,geid] < maxadv):
-                                    
+                                # delete from lut
+                                #self.lut[etype][leid]['vidx'] = self.lut[etype][leid]['vidx'][shift:]
+                                #self.lut[etype][leid]['vtim'] = self.lut[etype][leid]['vtim'][shift:,:]
+
+                                #if self.lut[etype][leid]['vidx'].any() and (self.temp[etype][-1,7,geid] < maxadv):
+                                #    maxadv = self.temp[etype][-1,7,geid]
+
+                                # delete from lut
+                                lut['vidx'] = lut['vidx'][shift:]
+                                lut['vtim'] = lut['vtim'][shift:,:]
+
+                                if lut['vidx'].any() and (self.temp[etype][-1,7,geid] < maxadv):
                                     maxadv = self.temp[etype][-1,7,geid]
 
                     if maxadv <= self.tnext:
                         print('ERROR, nvmax too small')
 
                     self.tfull[etype] = maxadv
-
                     self.acteddy[etype].set(self.temp[etype])
-                    comm, rank, root = get_comm_rank_root()
-                    print(f'rank {rank}, etype {etype}, maxadv {maxadv}')
-                    #print(maxadv)
-                    
+    
             self.tnext = min(val for val in self.tfull.values())
-            print(f'rank {rank}, tnext {self.tnext}')
