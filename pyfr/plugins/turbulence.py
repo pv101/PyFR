@@ -19,11 +19,11 @@ class Turbulence(BasePlugin):
         super().__init__(intg, cfgsect, suffix)
         
         self.restart = restart
-        self.tnext = 0.0
-        self.tfull = {}
+        self.tnxt = 0.0
+        self.trcl = {}
         self.tend = 1.0
 
-        self.drtol = 0.1
+        self.btol = 0.1
 
         constants = self.cfg.items_as('constants', float)
         params = self.cfg.items_as(cfgsect, float)
@@ -70,20 +70,20 @@ class Turbulence(BasePlugin):
         self.gc = gc = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
         self.nvorts = nvorts = int((ymax-ymin)*(zmax-zmin)/(4*self.ls*self.ls))
 
-        self.dtmargin = 0
+        self.dtol = 0
         
         if hasattr(intg, 'dtmax'):
-            self.dtmargin = intg.dtmax
+            self.dtol = intg.dtmax
         else:
-            self.dtmargin = intg._dt
+            self.dtol = intg._dt
 
         self.nparams = nparams = 9
         
         self.neles = {}
-        self.eles = {}
+        self.geid = {}
         self.pts = {}
         self.etypeupdate = {}
-        self.temp = {}
+        self.buff = {}
   
         bbox = BoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax])
         
@@ -93,15 +93,13 @@ class Turbulence(BasePlugin):
             inside = bbox.pts_in_region(pts)
             if np.any(inside):
                 eids = np.any(inside, axis=0).nonzero()[0]
-                #print(eids)
-                #print(etype)
-                self.eles[etype] = eids
+                self.geid[etype] = eids
                 self.pts[etype] = pts[:,eids,:]
-                self.tfull[etype] = 0.0
+                self.trcl[etype] = 0.0
                 self.neles[etype] = eles.neles
        
-        if not bool(self.eles):
-           self.tnext = math.inf
+        if not bool(self.geid):
+           self.tnxt = math.inf
 
         self.rng = np.random.default_rng(42)
         
@@ -132,7 +130,7 @@ class Turbulence(BasePlugin):
         self.vdat = np.asarray(temp)
 
         #################
-        # Make luts #
+        # Make acts #
         #################
         
         ttlut = defaultdict(lambda: defaultdict(list))
@@ -162,77 +160,60 @@ class Turbulence(BasePlugin):
            for v in luts.values():
                v.sort(key=lambda x: x[1])
 
-        self.lut = defaultdict(lambda: defaultdict(dict))
+        self.acts = defaultdict(lambda: defaultdict(dict))
 
         for k,v in ttlut.items():
             for kk, vv in v.items():
                 nvv = np.array(vv) 
-                self.lut[k][kk]['vidx'] = nvv[:,0].astype(int)
-                self.lut[k][kk]['vtim'] = nvv[:,-2:] 
+                self.acts[k][kk]['vidx'] = nvv[:,0].astype(int)
+                self.acts[k][kk]['vtim'] = nvv[:,-2:] 
 
-        self.nvmaxauto = self.dryrun()
+        self.nvmx = self.getnvmx()
 
         self.acteddy = acteddy = {}
         
-        for etype in self.eles:
-            comm, rank, root = get_comm_rank_root()
-            print(f'adding kernels for rank {rank}')
+        for etype in self.geid:
             eles = intg.system.ele_map[etype]
-            self.temp[etype] = np.full((self.nvmaxauto[etype], self.nparams, eles.neles), 0.0)
+            self.buff[etype] = np.full((self.nvmx[etype], self.nparams, eles.neles), 0.0)
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
-            {'nvmax': self.nvmaxauto[etype], 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
+            {'nvmax': self.nvmx[etype], 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
              'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
              'sigma' : sigma, 'rs': rs, 'gc': gc})
-            acteddy[etype] = eles._be.matrix((self.nvmaxauto[etype], nparams, self.neles[etype]), tags={'align'})
+            acteddy[etype] = eles._be.matrix((self.nvmx[etype], nparams, self.neles[etype]), tags={'align'})
             eles._set_external('acteddy',
-                               f'in broadcast-col fpdtype_t[{self.nvmaxauto[etype]}][{nparams}]',
+                               f'in broadcast-col fpdtype_t[{self.nvmx[etype]}][{nparams}]',
                                value=acteddy[etype])
 
-    def dryrun(self):
-        nvmaxmin = {}
-        comm, rank, root = get_comm_rank_root()
-        for etype, luts in self.lut.items():
-            nvmaxmin[etype] = 0
-            for leid, lut in luts.items():
-                for i, act in enumerate(lut['vtim'][:,1]):
-                    ifidx = next((j for j,x in enumerate(lut['vtim'][:,0]) if x > act+self.drtol),0)
-                    if ifidx:
-                        tot = ifidx - i + 1
-                    else:
-                        tot = len(lut) - i
-                    if tot > nvmaxmin[etype]:
-                        #print(tot)
-                        nvmaxmin[etype] = tot
-            print(f'nvmaxmin for {etype} on rank {rank} is {nvmaxmin[etype]}')
-        return nvmaxmin
+    def getnvmx(self):
+        nvmx = {}
+        for etype, acts in self.acts.items():
+            nvmx[etype] = 0
+            for leid, actl in acts.items():
+                for i, te in enumerate(actl['vtim'][:,1]):
+                    shft = next((j for j,v in enumerate(actl['vtim'][:,0]) if v > te+self.btol),len(actl)-1) - i + 1
+                    if shft > nvmx[etype]:
+                        nvmx[etype] = shft
+        return nvmx
                           
     def __call__(self, intg):
         
         tcurr = intg.tcurr
-        
-        if tcurr+self.dtmargin >= self.tnext:
-            for etype, luts in self.lut.items():
-                if self.tfull[etype] <= self.tnext:
-                    maxadv = np.inf
-                    for leid, lut in luts.items():
-                        if lut['vidx'].any():
-                            geid = self.eles[etype][leid]
-                            shift = next((i for i,x in enumerate(self.temp[etype][:,8,geid]) if x > tcurr),self.nvmaxauto[etype])
-                            if shift:
-                                add = np.concatenate((self.vdat[lut['vidx'][:shift],:], lut['vtim'][:shift,:]), axis=1)
-
-                                if add.shape[0] < shift:
-                                    add = np.pad(add, [(0,shift-add.shape[0]),(0,0)], 'constant')
-                           
-                                self.temp[etype][:,:,geid] = np.concatenate((self.temp[etype][shift:,:,geid],add))
-
-                                lut['vidx'] = lut['vidx'][shift:]
-                                lut['vtim'] = lut['vtim'][shift:,:]
-
-                                if lut['vidx'].any() and (self.temp[etype][-1,7,geid] < maxadv):
-                                    maxadv = self.temp[etype][-1,7,geid]
-
-                    self.tfull[etype] = maxadv
-                    self.acteddy[etype].set(self.temp[etype])
-    
-            self.tnext = min(val for val in self.tfull.values())
+        if tcurr+self.dtol >= self.tnxt:
+            for etype, acts in self.acts.items():
+                if self.trcl[etype] <= self.tnxt:
+                    trcl = np.inf
+                    for leid, actl in acts.items():
+                        if actl['vidx'].any():
+                            geid = self.geid[etype][leid]
+                            shft = next((i for i,v in enumerate(self.buff[etype][:,8,geid]) if v > tcurr),self.nvmx[etype])
+                            if shft:
+                                newb = np.concatenate((self.vdat[actl['vidx'][:shft],:], actl['vtim'][:shft,:]), axis=1)
+                                newb = np.pad(newb, [(0,shft-newb.shape[0]),(0,0)], 'constant')
+                                self.buff[etype][:,:,geid] = np.concatenate((self.buff[etype][shft:,:,geid],newb))
+                                actl['vidx'] = actl['vidx'][shft:]
+                                actl['vtim'] = actl['vtim'][shft:,:]
+                                if actl['vidx'].any() and (self.buff[etype][-1,7,geid] < trcl):
+                                    trcl = self.buff[etype][-1,7,geid]
+                    self.trcl[etype] = trcl
+                    self.acteddy[etype].set(self.buff[etype])
+            self.tnxt = min(v for v in self.trcl.values())
