@@ -82,27 +82,19 @@ class Turbulence(BasePlugin):
         self.neles = {}
         self.geid = {}
         self.pts = {}
-        self.etypeupdate = {}
         self.buff = {}
   
         bbox = BoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax])
         
-        for etype, eles in intg.system.ele_map.items():
-            pts = eles.ploc_at_np('upts')
-            pts = np.moveaxis(pts, 1, -1)
-            inside = bbox.pts_in_region(pts)
-            if np.any(inside):
-                eids = np.any(inside, axis=0).nonzero()[0]
-                self.geid[etype] = eids
-                self.pts[etype] = pts[:,eids,:]
-                self.trcl[etype] = 0.0
-                self.neles[etype] = eles.neles
-       
-        if not bool(self.geid):
-           self.tnxt = math.inf
-
         self.rng = np.random.default_rng(42)
         
+
+
+
+
+
+
+
         #################
         # Make vortices #
         #################
@@ -129,91 +121,142 @@ class Turbulence(BasePlugin):
 
         self.vdat = np.asarray(temp)
 
-        #################
-        # Make acts #
-        #################
-        
-        ttlut = defaultdict(lambda: defaultdict(list))
-            
-        for vid, vort in enumerate(self.vdat):
-            vbox = BoxRegion([self.xmin,
-                                 vort[1]-self.ls,
-                                 vort[2]-self.ls],
-                                [self.xmax,
-                                 vort[1]+self.ls,
-                                 vort[2]+self.ls])
-            for etype, pts in self.pts.items():
-                elestemp = []               
-                inside = vbox.pts_in_region(pts)
 
-                if np.any(inside):
-                    elestemp = np.any(inside, axis=0).nonzero()[0].tolist() # box local indexing
+
+
+
+
+
+        self.uberbuff = []
+
+        for etype, eles in intg.system.ele_map.items():
+            pts = eles.ploc_at_np('upts')
+            pts = np.moveaxis(pts, 1, -1)
+            inside = bbox.pts_in_region(pts)
+
+            ttlut = defaultdict(list)
+            vidx = defaultdict()
+            vtim = defaultdict()
+
+            if np.any(inside):
+                eids = np.any(inside, axis=0).nonzero()[0]
+                #self.geid[etype] = eids
+                ptsr = pts[:,eids,:]
+                #self.trcl[etype] = 0.0
+                #self.neles[etype] = eles.neles
+
+                for vid, vort in enumerate(self.vdat):
+                    vbox = BoxRegion([self.xmin,
+                                         vort[1]-self.ls,
+                                         vort[2]-self.ls],
+                                        [self.xmax,
+                                         vort[1]+self.ls,
+                                         vort[2]+self.ls])
+
                     
-                for eid in elestemp:
-                    exmin = pts[:,eid,0].min()
-                    exmax = pts[:,eid,0].max()
-                    ts = max(vort[3], vort[3] + ((exmin - vort[0] - self.ls)/self.ubar))
-                    te = ts + (exmax-exmin+2*self.ls)/self.ubar   
-                    ttlut[etype][eid].append([vid,ts,te])
-               
-        for luts in ttlut.values():
-           for v in luts.values():
-               v.sort(key=lambda x: x[1])
+                    elestemp = []               
+                    inside = vbox.pts_in_region(ptsr)
 
-        self.acts = defaultdict(lambda: defaultdict(dict))
+                    if np.any(inside):
+                        elestemp = np.any(inside, axis=0).nonzero()[0].tolist() # box local indexing
+                        
+                    for eid in elestemp:
+                        exmin = ptsr[:,eid,0].min()
+                        exmax = ptsr[:,eid,0].max()
+                        ts = max(vort[3], vort[3] + ((exmin - vort[0] - self.ls)/self.ubar))
+                        te = ts + (exmax-exmin+2*self.ls)/self.ubar
+                        ttlut[eid].append([vid,ts,te])
 
-        for k,v in ttlut.items():
-            for kk, vv in v.items():
-                nvv = np.array(vv) 
-                self.acts[k][kk]['vidx'] = nvv[:,0].astype(int)
-                self.acts[k][kk]['vtim'] = nvv[:,-2:] 
+                    for kk, vv in ttlut.items():
+                        vv.sort(key=lambda x: x[1])
+                        nvv = np.array(vv)
+                        vidx[kk] = nvv[:,0].astype(int)
+                        vtim[kk] = nvv[:,-2:]
 
-        self.nvmx = self.getnvmx()
+            nvmx = 0
+            for leid, actl in vtim.items():
+                for i, te in enumerate(actl[:,1]):
+                    shft = next((j for j,v in enumerate(actl[:,0]) if v > te+self.btol),len(actl)-1) - i + 1
+                    if shft > nvmx:
+                        nvmx = shft
 
-        self.acteddy = acteddy = {}
-        
-        for etype in self.geid:
-            eles = intg.system.ele_map[etype]
-            self.buff[etype] = np.full((self.nvmx[etype], self.nparams, eles.neles), 0.0)
+            buff = np.full((nvmx, self.nparams, eles.neles), 0.0)
+
+            adduberbuff = {'geid': eids, 'pts': ptsr, 'trcl': 0.0, 'neles': eles.neles, 'etype': etype, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, eles.neles), tags={'align'})}
+       
+            self.uberbuff.append(adduberbuff)
+
             eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
-            {'nvmax': self.nvmx[etype], 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
+            {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
              'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
              'sigma' : sigma, 'rs': rs, 'gc': gc})
-            acteddy[etype] = eles._be.matrix((self.nvmx[etype], nparams, self.neles[etype]), tags={'align'})
-            eles._set_external('acteddy',
-                               f'in broadcast-col fpdtype_t[{self.nvmx[etype]}][{nparams}]',
-                               value=acteddy[etype])
 
-    def getnvmx(self):
-        nvmx = {}
-        for etype, acts in self.acts.items():
-            nvmx[etype] = 0
-            for leid, actl in acts.items():
-                for i, te in enumerate(actl['vtim'][:,1]):
-                    shft = next((j for j,v in enumerate(actl['vtim'][:,0]) if v > te+self.btol),len(actl)-1) - i + 1
-                    if shft > nvmx[etype]:
-                        nvmx[etype] = shft
-        return nvmx
+            #acteddy[etype] = eles._be.matrix((self.nvmx[etype], nparams, self.neles[etype]), tags={'align'})
+            eles._set_external('acteddy',
+                               f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',
+                               value=adduberbuff['acteddy'])
+
+
+
+
+        if not bool(self.uberbuff):
+           self.tnxt = math.inf
+
+        
+
+
+
+
+        #self.nvmx = self.getnvmx()
+
+        #self.acteddy = acteddy = {}
+        
+
+        # for etype in self.geid:
+        #     eles = intg.system.ele_map[etype]
+        #     self.buff[etype] = np.full((self.nvmx[etype], self.nparams, eles.neles), 0.0)
+        #     eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
+        #     {'nvmax': self.nvmx[etype], 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
+        #      'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
+        #      'sigma' : sigma, 'rs': rs, 'gc': gc})
+        #     acteddy[etype] = eles._be.matrix((self.nvmx[etype], nparams, self.neles[etype]), tags={'align'})
+        #     eles._set_external('acteddy',
+        #                        f'in broadcast-col fpdtype_t[{self.nvmx[etype]}][{nparams}]',
+        #                        value=acteddy[etype])
+
+
+
+    #def getnvmx(self):
+    #    nvmx = {}
+    #    for etype, acts in self.acts.items():
+    #        nvmx[etype] = 0
+    #        for leid, actl in acts.items():
+    #            for i, te in enumerate(actl['vtim'][:,1]):
+    #                shft = next((j for j,v in enumerate(actl['vtim'][:,0]) if v > te+self.btol),len(actl)-1) - i + 1
+    #                if shft > nvmx[etype]:
+    #                    nvmx[etype] = shft
+    #    return nvmx
                           
     def __call__(self, intg):
         
         tcurr = intg.tcurr
         if tcurr+self.dtol >= self.tnxt:
-            for etype, acts in self.acts.items():
-                if self.trcl[etype] <= self.tnxt:
+            #for etype, acts in self.acts.items():
+            for tid, thing in enumerate(self.uberbuff):    
+                if thing['trcl'] <= self.tnxt:
                     trcl = np.inf
-                    for leid, actl in acts.items():
-                        if actl['vidx'].any():
-                            geid = self.geid[etype][leid]
-                            shft = next((i for i,v in enumerate(self.buff[etype][:,8,geid]) if v > tcurr),self.nvmx[etype])
+                    for leid, vidxs in thing['vidx'].items():
+                        if vidxs.any():
+                            geid = thing['geid'][leid]
+                            shft = next((i for i,v in enumerate(thing['buff'][:,8,geid]) if v > tcurr),thing['nvmx'])
                             if shft:
-                                newb = np.concatenate((self.vdat[actl['vidx'][:shft],:], actl['vtim'][:shft,:]), axis=1)
+                                newb = np.concatenate((self.vdat[vidxs[:shft],:], thing['vtim'][leid][:shft,:]), axis=1)
                                 newb = np.pad(newb, [(0,shft-newb.shape[0]),(0,0)], 'constant')
-                                self.buff[etype][:,:,geid] = np.concatenate((self.buff[etype][shft:,:,geid],newb))
-                                actl['vidx'] = actl['vidx'][shft:]
-                                actl['vtim'] = actl['vtim'][shft:,:]
-                                if actl['vidx'].any() and (self.buff[etype][-1,7,geid] < trcl):
-                                    trcl = self.buff[etype][-1,7,geid]
-                    self.trcl[etype] = trcl
-                    self.acteddy[etype].set(self.buff[etype])
-            self.tnxt = min(v for v in self.trcl.values())
+                                self.uberbuff[tid]['buff'][:,:,geid] = np.concatenate((thing['buff'][shft:,:,geid],newb))
+                                self.uberbuff[tid]['vidx'][leid] = vidxs[shft:]
+                                self.uberbuff[tid]['vtim'][leid] = thing['vtim'][leid][shft:,:]
+                                if self.uberbuff[tid]['vidx'][leid].any() and (self.uberbuff[tid]['buff'][-1,7,geid] < trcl):
+                                    trcl = self.uberbuff[tid]['buff'][-1,7,geid]
+                    self.uberbuff[tid]['trcl'] = trcl
+                    self.uberbuff[tid]['acteddy'].set(thing['buff'])
+            self.tnxt = min(etype['trcl'] for etype in self.uberbuff)
