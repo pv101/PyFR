@@ -155,10 +155,10 @@ class Turbulence(BasePlugin):
 
                     
                     elestemp = []               
-                    inside = vbox.pts_in_region(ptsr)
+                    insidev = vbox.pts_in_region(ptsr)
 
-                    if np.any(inside):
-                        elestemp = np.any(inside, axis=0).nonzero()[0].tolist() # box local indexing
+                    if np.any(insidev):
+                        elestemp = np.any(insidev, axis=0).nonzero()[0].tolist() # box local indexing
                         
                     for eid in elestemp:
                         exmin = ptsr[:,eid,0].min()
@@ -173,28 +173,28 @@ class Turbulence(BasePlugin):
                         vidx[kk] = nvv[:,0].astype(int)
                         vtim[kk] = nvv[:,-2:]
 
-            nvmx = 0
-            for leid, actl in vtim.items():
-                for i, te in enumerate(actl[:,1]):
-                    shft = next((j for j,v in enumerate(actl[:,0]) if v > te+self.btol),len(actl)-1) - i + 1
-                    if shft > nvmx:
-                        nvmx = shft
+                nvmx = 0
+                for leid, actl in vtim.items():
+                    for i, te in enumerate(actl[:,1]):
+                        shft = next((j for j,v in enumerate(actl[:,0]) if v > te+self.btol),len(actl)-1) - i + 1
+                        if shft > nvmx:
+                            nvmx = shft
 
-            buff = np.full((nvmx, self.nparams, eles.neles), 0.0)
+                buff = np.full((nvmx, self.nparams, eles.neles), 0.0)
 
-            adduberbuff = {'geid': eids, 'pts': ptsr, 'trcl': 0.0, 'neles': eles.neles, 'etype': etype, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, eles.neles), tags={'align'})}
+                adduberbuff = {'geid': eids, 'pts': ptsr, 'trcl': 0.0, 'neles': eles.neles, 'etype': etype, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, eles.neles), tags={'align'})}
        
-            self.uberbuff.append(adduberbuff)
+                self.uberbuff.append(adduberbuff)
 
-            eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
-            {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
-             'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
-             'sigma' : sigma, 'rs': rs, 'gc': gc})
+                eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
+                {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
+                 'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
+                 'sigma' : sigma, 'rs': rs, 'gc': gc})
 
-            #acteddy[etype] = eles._be.matrix((self.nvmx[etype], nparams, self.neles[etype]), tags={'align'})
-            eles._set_external('acteddy',
-                               f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',
-                               value=adduberbuff['acteddy'])
+                #acteddy[etype] = eles._be.matrix((self.nvmx[etype], nparams, self.neles[etype]), tags={'align'})
+                eles._set_external('acteddy',
+                                   f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',
+                                   value=adduberbuff['acteddy'])
 
 
 
