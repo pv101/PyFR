@@ -44,7 +44,7 @@
         
         % for j in range(ndims):
             delta2[${j}] = (pos[${j}]-ploc[${j}])*(pos[${j}]-ploc[${j}]);
-            arg += 0.5*invsigma2*invls2*delta2[${j}];
+            arg += -0.5*invsigma2*invls2*delta2[${j}];
         % endfor
         g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? invsigma3*gc3*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
         
