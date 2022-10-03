@@ -35,7 +35,7 @@ class Turbulence(BasePlugin):
         self.rhobar = rhobar = params['rho-bar']
         self.ubar = ubar = params['u-bar']
         self.machbar = machbar = params['mach-bar']
-        self.rs = rs = params['reynolds-stress']
+        self.rootrs = rootrs = np.sqrt(params['reynolds-stress'])
         self.ls = ls = params['length-scale']
         self.sigma = sigma = params['sigma']
         
@@ -71,7 +71,15 @@ class Turbulence(BasePlugin):
         self.rot = np.array([[a11, a12, a13], [a21, a22, a23], [a31, a32, a33]])
         
         self.srafac = srafac = rhobar*(constants['gamma']-1.0)*machbar*machbar
-        self.gc = gc = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
+        #gcold = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
+        self.gc = gc = math.sqrt((2.0*sigma/(math.sqrt(math.pi)))*(1.0/math.erf(1.0/sigma)))
+
+        #print(gcold)
+        #print(gc)
+
+        (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
+
+
         self.nvorts = nvorts = int((ymax-ymin)*(zmax-zmin)/(4*self.ls*self.ls))
 
         self.dtol = 0
@@ -186,7 +194,7 @@ class Turbulence(BasePlugin):
                 eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
                 {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
                  'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
-                 'sigma' : sigma, 'rs': rs, 'gc': gc})
+                 'sigma' : sigma, 'rootrs': rootrs, 'gc': gc})
 
                 eles._set_external('acteddy',
                                    f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',

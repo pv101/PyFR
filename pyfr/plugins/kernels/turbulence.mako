@@ -7,7 +7,7 @@
   fpdtype_t ls2 = ${ls}*${ls};
   fpdtype_t invls2 = 1.0/(${ls}*${ls});
   fpdtype_t gc3 = ${gc}*${gc}*${gc};
-  fpdtype_t rs = ${rs};
+  fpdtype_t rootrs = ${rootrs};
   fpdtype_t srafac = ${srafac};
   fpdtype_t invsigma = 1.0/${sigma};
   fpdtype_t invsigma2 = 1.0/(${sigma}*${sigma});
@@ -59,7 +59,7 @@
   % endfor
   
   % for i in range(ndims): 
-    utilde[${i}] *= rs;
+    utilde[${i}] *= rootrs;
   % endfor
   
   xloc2 = -0.5*3.141592654*(xin-ploc[0])*(xin-ploc[0])*invls2;
