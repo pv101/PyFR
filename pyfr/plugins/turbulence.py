@@ -22,7 +22,9 @@ class Turbulence(BasePlugin):
         self.tnxt = intg.tcurr
         self.trcl = {}
         self.tend = intg.tend
+        self.tstart = intg.tstart
 
+        print(self.tstart)
         print(self.tnxt)
         print(self.tend)
 
@@ -89,7 +91,9 @@ class Turbulence(BasePlugin):
   
         bbox = BoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax])
         
-        self.rng = np.random.default_rng(42)
+        self.seed = 42
+
+        self.rng = np.random.default_rng(self.seed)
         
 
         self.tbegin = intg.tcurr
@@ -105,7 +109,7 @@ class Turbulence(BasePlugin):
         vid = 0
         temp = []
         while vid <= self.nvorts:
-            t = self.tbegin
+            t = self.tstart # start right at the start
             initial = True
             while t < self.tend:
                 if initial:
@@ -117,7 +121,8 @@ class Turbulence(BasePlugin):
                 epsx = self.rng.choice([-1,1])
                 epsy = self.rng.choice([-1,1])
                 epsz = self.rng.choice([-1,1])
-                temp.append([xinit,yinit,zinit,t,epsx,epsy,epsz])
+                if t >= self.tbegin:
+                    temp.append([xinit,yinit,zinit,t,epsx,epsy,epsz])
                 t += (self.xmax-xinit)/self.ubar
                 initial = False
             vid += 1
