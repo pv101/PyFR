@@ -18,7 +18,6 @@ class Turbulence(BasePlugin):
     def __init__(self, intg, cfgsect, suffix, restart=False):
         super().__init__(intg, cfgsect, suffix)
         
-        self.restart = restart
         self.tnxt = intg.tcurr
         self.trcl = {}
         self.tend = intg.tend
@@ -98,10 +97,6 @@ class Turbulence(BasePlugin):
 
         self.tbegin = intg.tcurr
 
-
-
-
-
         #################
         # Make vortices #
         #################
@@ -129,11 +124,9 @@ class Turbulence(BasePlugin):
 
         self.vdat = np.asarray(temp)
 
-
-
-
-
-
+        #####################
+        # Make action buffer#
+        #####################
 
         self.uberbuff = []
 
@@ -148,11 +141,7 @@ class Turbulence(BasePlugin):
 
             if np.any(inside):
                 eids = np.any(inside, axis=0).nonzero()[0]
-                #self.geid[etype] = eids
                 ptsr = pts[:,eids,:]
-                #self.trcl[etype] = 0.0
-                #self.neles[etype] = eles.neles
-
                 for vid, vort in enumerate(self.vdat):
                     vbox = BoxRegion([self.xmin,
                                          vort[1]-self.ls,
@@ -199,7 +188,6 @@ class Turbulence(BasePlugin):
                  'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
                  'sigma' : sigma, 'rs': rs, 'gc': gc})
 
-                #acteddy[etype] = eles._be.matrix((self.nvmx[etype], nparams, self.neles[etype]), tags={'align'})
                 eles._set_external('acteddy',
                                    f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',
                                    value=adduberbuff['acteddy'])
@@ -209,47 +197,11 @@ class Turbulence(BasePlugin):
 
         if not bool(self.uberbuff):
            self.tnxt = math.inf
-
-        
-
-
-
-
-        #self.nvmx = self.getnvmx()
-
-        #self.acteddy = acteddy = {}
-        
-
-        # for etype in self.geid:
-        #     eles = intg.system.ele_map[etype]
-        #     self.buff[etype] = np.full((self.nvmx[etype], self.nparams, eles.neles), 0.0)
-        #     eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
-        #     {'nvmax': self.nvmx[etype], 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
-        #      'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
-        #      'sigma' : sigma, 'rs': rs, 'gc': gc})
-        #     acteddy[etype] = eles._be.matrix((self.nvmx[etype], nparams, self.neles[etype]), tags={'align'})
-        #     eles._set_external('acteddy',
-        #                        f'in broadcast-col fpdtype_t[{self.nvmx[etype]}][{nparams}]',
-        #                        value=acteddy[etype])
-
-
-
-    #def getnvmx(self):
-    #    nvmx = {}
-    #    for etype, acts in self.acts.items():
-    #        nvmx[etype] = 0
-    #        for leid, actl in acts.items():
-    #            for i, te in enumerate(actl['vtim'][:,1]):
-    #                shft = next((j for j,v in enumerate(actl['vtim'][:,0]) if v > te+self.btol),len(actl)-1) - i + 1
-    #                if shft > nvmx[etype]:
-    #                    nvmx[etype] = shft
-    #    return nvmx
-                          
+                     
     def __call__(self, intg):
         
         tcurr = intg.tcurr
         if tcurr+self.dtol >= self.tnxt:
-            #for etype, acts in self.acts.items():
             for tid, thing in enumerate(self.uberbuff):    
                 if thing['trcl'] <= self.tnxt:
                     trcl = np.inf
