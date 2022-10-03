@@ -19,9 +19,12 @@ class Turbulence(BasePlugin):
         super().__init__(intg, cfgsect, suffix)
         
         self.restart = restart
-        self.tnxt = 0.0
+        self.tnxt = intg.tcurr
         self.trcl = {}
-        self.tend = 1.0
+        self.tend = intg.tend
+
+        print(self.tnxt)
+        print(self.tend)
 
         self.btol = 0.1
 
@@ -89,7 +92,7 @@ class Turbulence(BasePlugin):
         self.rng = np.random.default_rng(42)
         
 
-
+        self.tbegin = intg.tcurr
 
 
 
@@ -102,7 +105,7 @@ class Turbulence(BasePlugin):
         vid = 0
         temp = []
         while vid <= self.nvorts:
-            t = 0.0
+            t = self.tbegin
             initial = True
             while t < self.tend:
                 if initial:
