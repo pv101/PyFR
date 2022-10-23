@@ -29,8 +29,11 @@ class Turbulence(BasePlugin):
 
         self.btol = 0.1
 
+        self.periodic = 'z'
+
         constants = self.cfg.items_as('constants', float)
         params = self.cfg.items_as(cfgsect, float)
+        print(params)
 
         self.rhobar = rhobar = params['rho-bar']
         self.ubar = ubar = params['u-bar']
@@ -39,19 +42,20 @@ class Turbulence(BasePlugin):
         self.ls = ls = params['length-scale']
         self.sigma = sigma = params['sigma']
         
-        self.xin = xin = params['x-in']
+        self.xin = xin = 0.0
         self.xmin = xmin = xin - ls
         self.xmax = xmax = xin + ls
-        self.ymin = ymin = params['y-min']
-        self.ymax = ymax = params['y-max']
-        self.zmin = zmin = params['z-min']
-        self.zmax = zmax = params['z-max']
+        self.ymin = ymin = -params['height']/2.0
+        self.ymax = ymax = params['height']/2.0
+        self.zmin = zmin = -params['width']/2.0
+        self.zmax = zmax = params['width']/2.0
         
-        self.e = [0,0,1]
-        self.c = [0.5,0.5,0.5]
-        self.theta = 0
+        self.c = [params['cx'],params['cy'],params['cz']]
+        self.e = [params['ex'],params['ey'],params['ez']]
         
-        theta = 1.0*np.radians(self.theta)
+        self.theta = params['theta']
+        
+        theta = -1.0*np.radians(self.theta)
         
         qi = self.e[0]*np.sin(theta/2) 
         qj = self.e[1]*np.sin(theta/2)
@@ -69,15 +73,18 @@ class Turbulence(BasePlugin):
         a33 = 1.0 - 2.0*qi*qi - 2.0*qj*qj
         
         self.rot = np.array([[a11, a12, a13], [a21, a22, a23], [a31, a32, a33]])
+        self.shift = np.array([-self.c[0], -self.c[1], -self.c[2]])
+
+       
+        print(self.rot)
+
+
+
         
         self.srafac = srafac = rhobar*(constants['gamma']-1.0)*machbar*machbar
-        #gcold = (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
+   
         self.gc = gc = math.sqrt((2.0*sigma/(math.sqrt(math.pi)))*(1.0/math.erf(1.0/sigma)))
 
-        #print(gcold)
-        #print(gc)
-
-        (1.0/(4.0*math.sqrt(math.pi)*sigma))*math.erf(1.0/sigma)
 
 
         self.nvorts = nvorts = int((ymax-ymin)*(zmax-zmin)/(4*self.ls*self.ls))
@@ -96,7 +103,7 @@ class Turbulence(BasePlugin):
         self.pts = {}
         self.buff = {}
   
-        bbox = BoxRegion([self.xmin,self.ymin,self.zmin],[self.xmax,self.ymax,self.zmax])
+        bbox = BoxRegion([self.xmin-ls,self.ymin-ls,self.zmin-ls],[self.xmax+ls,self.ymax+ls,self.zmax+ls])
         
         self.seed = 42
 
@@ -126,6 +133,20 @@ class Turbulence(BasePlugin):
                 epsz = self.rng.choice([-1,1])
                 if t >= self.tbegin:
                     temp.append([xinit,yinit,zinit,t,epsx,epsy,epsz])
+                    if self.periodic == 'y':
+                        if yinit+self.ls>self.ymax:
+                            temp.append([xinit,self.ymin-(self.ymax-yinit),zinit,t,epsx,epsy,epsz])
+                        if yinit-self.ls<self.ymin:
+                            temp.append([xinit,self.ymax+(yinit-self.ymin),zinit,t,epsx,epsy,epsz])
+                    if self.periodic == 'z':
+                        if zinit+self.ls>self.zmax:
+                            print("too near top")
+                            print(self.zmax-zinit)
+                            print(self.zmin-(self.zmax-zinit))
+                            temp.append([xinit,yinit,self.zmin-(self.zmax-zinit),t,epsx,epsy,epsz])
+                        if zinit-self.ls<self.zmin:
+                            print("too near bottom")
+                            temp.append([xinit,yinit,self.zmax+(zinit-self.zmin),t,epsx,epsy,epsz])
                 t += (self.xmax-xinit)/self.ubar
                 initial = False
             vid += 1
@@ -141,6 +162,7 @@ class Turbulence(BasePlugin):
         for etype, eles in intg.system.ele_map.items():
             pts = eles.ploc_at_np('upts')
             pts = np.moveaxis(pts, 1, -1)
+            pts = (self.rot @ (pts.reshape(3, -1) + self.shift[:,None])).reshape(pts.shape)
             inside = bbox.pts_in_region(pts)
 
             ttlut = defaultdict(list)
@@ -151,10 +173,10 @@ class Turbulence(BasePlugin):
                 eids = np.any(inside, axis=0).nonzero()[0]
                 ptsr = pts[:,eids,:]
                 for vid, vort in enumerate(self.vdat):
-                    vbox = BoxRegion([self.xmin,
+                    vbox = BoxRegion([vort[0]-ls,
                                          vort[1]-self.ls,
                                          vort[2]-self.ls],
-                                        [self.xmax,
+                                        [self.xmax+ls,
                                          vort[1]+self.ls,
                                          vort[2]+self.ls])
 
@@ -194,7 +216,10 @@ class Turbulence(BasePlugin):
                 eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
                 {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
                  'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
-                 'sigma' : sigma, 'rootrs': rootrs, 'gc': gc})
+                 'sigma' : sigma, 'rootrs': rootrs, 'gc': gc,
+                 'a11': a11, 'a12': a12, 'a13': a13, 'a21': a21, 'a22': a22, 'a23': a23, 'a31': a31, 'a32': a32, 'a33': a33,
+                 'cx': -self.c[0], 'cy': -self.c[1], 'cz': -self.c[2]
+                 })
 
                 eles._set_external('acteddy',
                                    f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',
