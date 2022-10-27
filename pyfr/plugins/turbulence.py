@@ -15,51 +15,54 @@ class Turbulence(BasePlugin):
     systems = ['navier-stokes']
     formulations = ['std']
 
-    def __init__(self, intg, cfgsect, suffix, restart=False):
+    def __init__(self, intg, cfgsect, suffix):
         super().__init__(intg, cfgsect, suffix)
         
-        self.tnxt = intg.tcurr
-        self.trcl = {}
-        self.tend = intg.tend
         self.tstart = intg.tstart
+        self.tbegin = intg.tcurr
+        self.tnext = intg.tcurr
+        self.tend = intg.tend
 
-        print(self.tstart)
-        print(self.tnxt)
-        print(self.tend)
+        btol = 0.1
+        nparams = 9
 
-        self.btol = 0.1
+        gamma = self.cfg.getfloat('constants', 'gamma')
+        rhobar = self.cfg.getfloat(cfgsect,'rho-bar')
+        ubar = self.cfg.getfloat(cfgsect,'u-bar')
+        machbar = self.cfg.getfloat(cfgsect,'mach-bar')
+        rootrs = np.sqrt(self.cfg.getfloat(cfgsect,'reynolds-stress'))
+        sigma = self.cfg.getfloat(cfgsect,'sigma')
+        ls = self.cfg.getfloat(cfgsect,'length-scale')
 
-        self.periodic = 'z'
+        srafac = rhobar*(gamma-1.0)*machbar*machbar
+        gc = math.sqrt((2.0*sigma/(math.sqrt(math.pi)))*(1.0/math.erf(1.0/sigma)))
 
-        constants = self.cfg.items_as('constants', float)
-        params = self.cfg.items_as(cfgsect, float)
-        print(params)
+        ydim = self.cfg.getfloat(cfgsect,'y-dim')
+        zdim = self.cfg.getfloat(cfgsect,'z-dim')
+        
+        xmin = - ls
+        xmax = ls
+        ymin = -ydim/2.0
+        ymax = ydim/2.0
+        zmin = -zdim/2.0
+        zmax = zdim/2.0
 
-        self.rhobar = rhobar = params['rho-bar']
-        self.ubar = ubar = params['u-bar']
-        self.machbar = machbar = params['mach-bar']
-        self.rootrs = rootrs = np.sqrt(params['reynolds-stress'])
-        self.ls = ls = params['length-scale']
-        self.sigma = sigma = params['sigma']
+        nvorts = int((ymax-ymin)*(zmax-zmin)/(4*ls*ls))
+        bbox = BoxRegion([xmin-ls,ymin-ls,zmin-ls],
+                         [xmax+ls,ymax+ls,zmax+ls])
         
-        self.xin = xin = 0.0
-        self.xmin = xmin = xin - ls
-        self.xmax = xmax = xin + ls
-        self.ymin = ymin = -params['height']/2.0
-        self.ymax = ymax = params['height']/2.0
-        self.zmin = zmin = -params['width']/2.0
-        self.zmax = zmax = params['width']/2.0
-        
-        self.c = [params['cx'],params['cy'],params['cz']]
-        self.e = [params['ex'],params['ey'],params['ez']]
-        
-        self.theta = params['theta']
-        
-        theta = -1.0*np.radians(self.theta)
-        
-        qi = self.e[0]*np.sin(theta/2) 
-        qj = self.e[1]*np.sin(theta/2)
-        qk = self.e[2]*np.sin(theta/2)
+        theta = -1.0*np.radians(self.cfg.getfloat(cfgsect,'rot-angle'))
+
+        periodicdim = self.cfg.get(cfgsect, 'periodic-dim', 'none')
+
+        c = self.cfg.getliteral(cfgsect, 'centre')
+        e = self.cfg.getliteral(cfgsect, 'rot-axis')
+
+        shift = np.array(c)
+
+        qi = e[0]*np.sin(theta/2) 
+        qj = e[1]*np.sin(theta/2)
+        qk = e[2]*np.sin(theta/2)
         qr = np.cos(theta/2)
         
         a11 = 1.0 - 2.0*qj*qj - 2.0*qk*qk
@@ -72,23 +75,10 @@ class Turbulence(BasePlugin):
         a32 = 2.0*(qj*qk + qi*qr)
         a33 = 1.0 - 2.0*qi*qi - 2.0*qj*qj
         
-        self.rot = np.array([[a11, a12, a13], [a21, a22, a23], [a31, a32, a33]])
-        self.shift = np.array([-self.c[0], -self.c[1], -self.c[2]])
-
-       
-        print(self.rot)
-
-
-
-        
-        self.srafac = srafac = rhobar*(constants['gamma']-1.0)*machbar*machbar
-   
-        self.gc = gc = math.sqrt((2.0*sigma/(math.sqrt(math.pi)))*(1.0/math.erf(1.0/sigma)))
-
-
-
-        self.nvorts = nvorts = int((ymax-ymin)*(zmax-zmin)/(4*self.ls*self.ls))
-
+        rot = np.array([[a11, a12, a13],
+                        [a21, a22, a23],
+                        [a31, a32, a33]])
+  
         self.dtol = 0
         
         if hasattr(intg, 'dtmax'):
@@ -96,73 +86,58 @@ class Turbulence(BasePlugin):
         else:
             self.dtol = intg._dt
 
-        self.nparams = nparams = 9
-        
-        self.neles = {}
-        self.geid = {}
-        self.pts = {}
-        self.buff = {}
-  
-        bbox = BoxRegion([self.xmin-ls,self.ymin-ls,self.zmin-ls],[self.xmax+ls,self.ymax+ls,self.zmax+ls])
-        
-        self.seed = 42
+        seed = self.cfg.getint(cfgsect, 'seed')
+        rng = np.random.default_rng(seed)
 
-        self.rng = np.random.default_rng(self.seed)
-        
-
-        self.tbegin = intg.tcurr
-
-        #################
-        # Make vortices #
-        #################
+        ######################
+        # Make vortex buffer #
+        ######################
         
         vid = 0
         temp = []
-        while vid <= self.nvorts:
+        while vid <= nvorts:
             t = self.tstart # start right at the start
             initial = True
             while t < self.tend:
                 if initial:
-                    xinit = self.xmin + (self.xmax-self.xmin)*self.rng.random()
+                    xinit = xmin + (xmax-xmin)*rng.random()
                 else:
-                    xinit = self.xmin
-                yinit = self.ymin + (self.ymax-self.ymin)*self.rng.random()
-                zinit = self.zmin + (self.zmax-self.zmin)*self.rng.random()
-                epsx = self.rng.choice([-1,1])
-                epsy = self.rng.choice([-1,1])
-                epsz = self.rng.choice([-1,1])
+                    xinit = xmin
+                yinit = ymin + (ymax-ymin)*rng.random()
+                zinit = zmin + (zmax-zmin)*rng.random()
+                epsx = rng.choice([-1,1])
+                epsy = rng.choice([-1,1])
+                epsz = rng.choice([-1,1])
                 if t >= self.tbegin:
                     temp.append([xinit,yinit,zinit,t,epsx,epsy,epsz])
-                    if self.periodic == 'y':
-                        if yinit+self.ls>self.ymax:
-                            temp.append([xinit,self.ymin-(self.ymax-yinit),zinit,t,epsx,epsy,epsz])
-                        if yinit-self.ls<self.ymin:
-                            temp.append([xinit,self.ymax+(yinit-self.ymin),zinit,t,epsx,epsy,epsz])
-                    if self.periodic == 'z':
-                        if zinit+self.ls>self.zmax:
-                            print("too near top")
-                            print(self.zmax-zinit)
-                            print(self.zmin-(self.zmax-zinit))
-                            temp.append([xinit,yinit,self.zmin-(self.zmax-zinit),t,epsx,epsy,epsz])
-                        if zinit-self.ls<self.zmin:
-                            print("too near bottom")
-                            temp.append([xinit,yinit,self.zmax+(zinit-self.zmin),t,epsx,epsy,epsz])
-                t += (self.xmax-xinit)/self.ubar
+                    if periodicdim == 'y':
+                        if yinit+ls>ymax:
+                            temp.append([xinit,ymin-(ymax-yinit),zinit,t,epsx,epsy,epsz])
+                        if yinit-ls<ymin:
+                            temp.append([xinit,ymax+(yinit-ymin),zinit,t,epsx,epsy,epsz])
+                    if periodicdim == 'z':
+                        if zinit+ls>zmax:
+                            temp.append([xinit,yinit,zmin-(zmax-zinit),t,epsx,epsy,epsz])
+                        if zinit-ls<zmin:
+                            temp.append([xinit,yinit,zmax+(zinit-zmin),t,epsx,epsy,epsz])
+                t += (xmax-xinit)/ubar
                 initial = False
             vid += 1
 
-        self.vdat = np.asarray(temp)
+        self.vortbuff = np.asarray(temp)
 
         #####################
         # Make action buffer#
         #####################
 
-        self.uberbuff = []
+        self.actbuffs = []
 
         for etype, eles in intg.system.ele_map.items():
+
+            neles = eles.neles
             pts = eles.ploc_at_np('upts')
             pts = np.moveaxis(pts, 1, -1)
-            pts = (self.rot @ (pts.reshape(3, -1) + self.shift[:,None])).reshape(pts.shape)
+            pts = (rot @ (pts.reshape(3, -1) - shift[:,None])).reshape(pts.shape)
             inside = bbox.pts_in_region(pts)
 
             ttlut = defaultdict(list)
@@ -170,86 +145,76 @@ class Turbulence(BasePlugin):
             vtim = defaultdict()
 
             if np.any(inside):
-                eids = np.any(inside, axis=0).nonzero()[0]
-                ptsr = pts[:,eids,:]
-                for vid, vort in enumerate(self.vdat):
-                    vbox = BoxRegion([vort[0]-ls,
-                                         vort[1]-self.ls,
-                                         vort[2]-self.ls],
-                                        [self.xmax+ls,
-                                         vort[1]+self.ls,
-                                         vort[2]+self.ls])
-
-                    
+                eids = np.any(inside, axis=0).nonzero()[0] # eles in injection box
+                ptsr = pts[:,eids,:] # points in injection box
+                for vid, vort in enumerate(self.vortbuff):
+                    vbox = BoxRegion([vort[0]-ls, vort[1]-ls, vort[2]-ls],
+                                     [xmax+ls, vort[1]+ls, vort[2]+ls])
                     elestemp = []               
-                    insidev = vbox.pts_in_region(ptsr)
+                    vinside = vbox.pts_in_region(ptsr)
 
-                    if np.any(insidev):
-                        elestemp = np.any(insidev, axis=0).nonzero()[0].tolist() # box local indexing
+                    if np.any(vinside):
+                        elestemp = np.any(vinside, axis=0).nonzero()[0].tolist() # injection box local indexing
                         
                     for eid in elestemp:
                         exmin = ptsr[:,eid,0].min()
                         exmax = ptsr[:,eid,0].max()
-                        ts = max(vort[3], vort[3] + ((exmin - vort[0] - self.ls)/self.ubar))
-                        te = ts + (exmax-exmin+2*self.ls)/self.ubar
+                        ts = max(vort[3], vort[3] + ((exmin - vort[0] - ls)/ubar))
+                        te = ts + (exmax-exmin+2*ls)/ubar
                         ttlut[eid].append([vid,ts,te])
 
-                    for kk, vv in ttlut.items():
-                        vv.sort(key=lambda x: x[1])
-                        nvv = np.array(vv)
-                        vidx[kk] = nvv[:,0].astype(int)
-                        vtim[kk] = nvv[:,-2:]
+                    for k, v in ttlut.items():
+                        v.sort(key=lambda x: x[1])
+                        nv = np.array(v)
+                        vidx[k] = nv[:,0].astype(int)
+                        vtim[k] = nv[:,-2:]
 
                 nvmx = 0
                 for leid, actl in vtim.items():
                     for i, te in enumerate(actl[:,1]):
-                        shft = next((j for j,v in enumerate(actl[:,0]) if v > te+self.btol),len(actl)-1) - i + 1
+                        shft = next((j for j,v in enumerate(actl[:,0]) if v > te+btol),len(actl)-1) - i + 1
                         if shft > nvmx:
                             nvmx = shft
 
-                buff = np.full((nvmx, self.nparams, eles.neles), 0.0)
-
-                adduberbuff = {'geid': eids, 'pts': ptsr, 'trcl': 0.0, 'neles': eles.neles, 'etype': etype, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, eles.neles), tags={'align'})}
+                buff = np.full((nvmx, nparams, neles), 0.0)
+                actbuff = {'geid': eids, 'pts': ptsr, 'trcl': 0.0, 'neles': neles, 'etype': etype, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'})}
        
-                self.uberbuff.append(adduberbuff)
-
                 eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
-                {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac, 'xin': xin,
+                {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac,
                  'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
                  'sigma' : sigma, 'rootrs': rootrs, 'gc': gc,
                  'a11': a11, 'a12': a12, 'a13': a13, 'a21': a21, 'a22': a22, 'a23': a23, 'a31': a31, 'a32': a32, 'a33': a33,
-                 'cx': -self.c[0], 'cy': -self.c[1], 'cz': -self.c[2]
+                 'cx': c[0], 'cy': c[1], 'cz': c[2]
                  })
 
                 eles._set_external('acteddy',
                                    f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',
-                                   value=adduberbuff['acteddy'])
+                                   value=actbuff['acteddy'])
 
+                self.actbuffs.append(actbuff)
 
-
-
-        if not bool(self.uberbuff):
-           self.tnxt = math.inf
+        if not bool(self.actbuffs):
+           self.tnext = math.inf
                      
     def __call__(self, intg):
         
         tcurr = intg.tcurr
-        if tcurr+self.dtol >= self.tnxt:
-            for tid, thing in enumerate(self.uberbuff):    
-                if thing['trcl'] <= self.tnxt:
+        if tcurr+self.dtol >= self.tnext:
+            for abid, actbuff in enumerate(self.actbuffs):    
+                if actbuff['trcl'] <= self.tnext:
                     trcl = np.inf
-                    for leid, vidxs in thing['vidx'].items():
+                    for leid, vidxs in actbuff['vidx'].items():
                         if vidxs.any():
-                            geid = thing['geid'][leid]
-                            shft = next((i for i,v in enumerate(thing['buff'][:,8,geid]) if v > tcurr),thing['nvmx'])
+                            geid = actbuff['geid'][leid]
+                            shft = next((i for i,v in enumerate(actbuff['buff'][:,8,geid]) if v > tcurr),actbuff['nvmx'])
                             if shft:
-                                newb = np.concatenate((self.vdat[vidxs[:shft],:], thing['vtim'][leid][:shft,:]), axis=1)
+                                newb = np.concatenate((self.vortbuff[vidxs[:shft],:], actbuff['vtim'][leid][:shft,:]), axis=1)
                                 newb = np.pad(newb, [(0,shft-newb.shape[0]),(0,0)], 'constant')
-                                self.uberbuff[tid]['buff'][:,:,geid] = np.concatenate((thing['buff'][shft:,:,geid],newb))
-                                self.uberbuff[tid]['vidx'][leid] = vidxs[shft:]
-                                self.uberbuff[tid]['vtim'][leid] = thing['vtim'][leid][shft:,:]
-                                if self.uberbuff[tid]['vidx'][leid].any() and (self.uberbuff[tid]['buff'][-1,7,geid] < trcl):
-                                    trcl = self.uberbuff[tid]['buff'][-1,7,geid]
-                    self.uberbuff[tid]['trcl'] = trcl
-                    self.uberbuff[tid]['acteddy'].set(thing['buff'])
-            self.tnxt = min(etype['trcl'] for etype in self.uberbuff)
+                                self.actbuffs[abid]['buff'][:,:,geid] = np.concatenate((actbuff['buff'][shft:,:,geid],newb))
+                                self.actbuffs[abid]['vidx'][leid] = vidxs[shft:]
+                                self.actbuffs[abid]['vtim'][leid] = actbuff['vtim'][leid][shft:,:]
+                                if self.actbuffs[abid]['vidx'][leid].any() and (self.actbuffs[abid]['buff'][-1,7,geid] < trcl):
+                                    trcl = self.actbuffs[abid]['buff'][-1,7,geid]
+                    self.actbuffs[abid]['trcl'] = trcl
+                    self.actbuffs[abid]['acteddy'].set(actbuff['buff'])
+            self.tnext = min(etype['trcl'] for etype in self.actbuffs)

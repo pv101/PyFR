@@ -2,7 +2,7 @@
 <%namespace module='pyfr.backends.base.makoutil' name='pyfr'/>
 
 <%pyfr:macro name='turbulence' params='t, u, ploc, src'>
-  fpdtype_t xin = ${xin};
+  fpdtype_t xin = 0.0;
   fpdtype_t ls = ${ls};
   fpdtype_t ls2 = ${ls}*${ls};
   fpdtype_t invls2 = 1.0/(${ls}*${ls});
@@ -29,8 +29,8 @@
   fpdtype_t clipy;
   fpdtype_t clipz;
   fpdtype_t g;
-  fpdtype_t xmin = ${xin} - ${ls};
-  fpdtype_t xmax = ${xin} + ${ls};
+  fpdtype_t xmin = - ${ls};
+  fpdtype_t xmax = ${ls};
   fpdtype_t ymin = ${ymin};
   fpdtype_t ymax = ${ymax};
   fpdtype_t zmin = ${zmin};
@@ -56,9 +56,9 @@
         pos[1] = acteddy[${i}][1];
         pos[2] = acteddy[${i}][2];
 
-        tploc[0]=ploc[0]+cx;
-        tploc[1]=ploc[1]+cy;
-        tploc[2]=ploc[2]+cz;
+        tploc[0]=ploc[0]-cx;
+        tploc[1]=ploc[1]-cy;
+        tploc[2]=ploc[2]-cz;
 
         ttploc[0] = a11*tploc[0] + a12*tploc[1] + a13*tploc[2];
         ttploc[1] = a21*tploc[0] + a22*tploc[1] + a23*tploc[2];
