@@ -75,9 +75,15 @@ class Turbulence(BasePlugin):
         a32 = 2.0*(qj*qk + qi*qr)
         a33 = 1.0 - 2.0*qi*qi - 2.0*qj*qj
         
+        print(a21)
+
+
         rot = np.array([[a11, a12, a13],
                         [a21, a22, a23],
                         [a31, a32, a33]])
+
+        print(rot)
+        print(shift)
   
         self.dtol = 0
         
@@ -137,8 +143,11 @@ class Turbulence(BasePlugin):
             neles = eles.neles
             pts = eles.ploc_at_np('upts')
             pts = np.moveaxis(pts, 1, -1)
-            pts = (rot @ (pts.reshape(3, -1) - shift[:,None])).reshape(pts.shape)
-            inside = bbox.pts_in_region(pts)
+            #print(pts.reshape(3, -1))
+            #print((pts.reshape(3, -1) - shift[:,None]))
+            #print(rot @ (pts.reshape(3, -1) - shift[:,None]))
+            ptsr = (rot @ (pts.reshape(3, -1) - shift[:,None])).reshape(pts.shape)
+            inside = bbox.pts_in_region(ptsr)
 
             ttlut = defaultdict(list)
             vidx = defaultdict()
@@ -146,28 +155,28 @@ class Turbulence(BasePlugin):
 
             if np.any(inside):
                 eids = np.any(inside, axis=0).nonzero()[0] # eles in injection box
-                ptsr = pts[:,eids,:] # points in injection box
+                ptsri = ptsr[:,eids,:] # points in injection box
                 for vid, vort in enumerate(self.vortbuff):
                     vbox = BoxRegion([vort[0]-ls, vort[1]-ls, vort[2]-ls],
                                      [xmax+ls, vort[1]+ls, vort[2]+ls])
                     elestemp = []               
-                    vinside = vbox.pts_in_region(ptsr)
+                    vinside = vbox.pts_in_region(ptsri)
 
                     if np.any(vinside):
                         elestemp = np.any(vinside, axis=0).nonzero()[0].tolist() # injection box local indexing
                         
                     for eid in elestemp:
-                        exmin = ptsr[:,eid,0].min()
-                        exmax = ptsr[:,eid,0].max()
+                        exmin = ptsri[:,eid,0].min()
+                        exmax = ptsri[:,eid,0].max()
                         ts = max(vort[3], vort[3] + ((exmin - vort[0] - ls)/ubar))
                         te = ts + (exmax-exmin+2*ls)/ubar
                         ttlut[eid].append([vid,ts,te])
 
-                    for k, v in ttlut.items():
-                        v.sort(key=lambda x: x[1])
-                        nv = np.array(v)
-                        vidx[k] = nv[:,0].astype(int)
-                        vtim[k] = nv[:,-2:]
+                for k, v in ttlut.items():
+                    v.sort(key=lambda x: x[1])
+                    nv = np.array(v)
+                    vidx[k] = nv[:,0].astype(int)
+                    vtim[k] = nv[:,-2:]
 
                 nvmx = 0
                 for leid, actl in vtim.items():
@@ -178,7 +187,7 @@ class Turbulence(BasePlugin):
 
                 buff = np.full((nvmx, nparams, neles), 0.0)
                 actbuff = {'geid': eids, 'pts': ptsr, 'trcl': 0.0, 'neles': neles, 'etype': etype, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'})}
-       
+
                 eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
                 {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac,
                  'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,

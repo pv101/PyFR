@@ -24,12 +24,9 @@
   utilde[1] = 0.0;
   utilde[2] = 0.0;
   fpdtype_t xloc2;
-  fpdtype_t clip;
-  fpdtype_t clipx;
-  fpdtype_t clipy;
-  fpdtype_t clipz;
+  fpdtype_t sclip;
   fpdtype_t g;
-  fpdtype_t xmin = - ${ls};
+  fpdtype_t xmin = -${ls};
   fpdtype_t xmax = ${ls};
   fpdtype_t ymin = ${ymin};
   fpdtype_t ymax = ${ymax};
@@ -47,59 +44,62 @@
   fpdtype_t cx = ${cx};
   fpdtype_t cy = ${cy};
   fpdtype_t cz = ${cz};
-  
-  % for i in range(nvmax):
-    arg = 0.0;
-    if (t > acteddy[${i}][7] && t < acteddy[${i}][8])
+
+  tploc[0]=ploc[0]-cx;
+  tploc[1]=ploc[1]-cy;
+  tploc[2]=ploc[2]-cz;
+
+  ttploc[0] = a11*tploc[0] + a12*tploc[1] + a13*tploc[2];
+  ttploc[1] = a21*tploc[0] + a22*tploc[1] + a23*tploc[2];
+  ttploc[2] = a31*tploc[0] + a32*tploc[1] + a33*tploc[2];
+
+  int i;
+  for (int i = 0; i < ${nvmax}; i++)
+  {
+    if (acteddy[i][7] > t)
     {
-        pos[0] = acteddy[${i}][0] + (t-acteddy[${i}][3])*ubar;
-        pos[1] = acteddy[${i}][1];
-        pos[2] = acteddy[${i}][2];
-
-        tploc[0]=ploc[0]-cx;
-        tploc[1]=ploc[1]-cy;
-        tploc[2]=ploc[2]-cz;
-
-        ttploc[0] = a11*tploc[0] + a12*tploc[1] + a13*tploc[2];
-        ttploc[1] = a21*tploc[0] + a22*tploc[1] + a23*tploc[2];
-        ttploc[2] = a31*tploc[0] + a32*tploc[1] + a33*tploc[2];
-        
-        % for j in range(ndims):
-            delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);
-            arg += -0.5*invsigma2*invls2*delta2[${j}];
-        % endfor
-        g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? invsigma3*gc3*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
-        
-        eps[0] = acteddy[${i}][4];
-        eps[1] = acteddy[${i}][5];
-        eps[2] = acteddy[${i}][6];
-        
-        % for j in range(ndims): 
-            utilde[${j}] += eps[${j}]*g;
-        % endfor     
+      break;
     }
-  % endfor
+    else if (acteddy[i][8] > t)
+    {
+      pos[0] = acteddy[i][0] + (t-acteddy[i][3])*ubar;
+      pos[1] = acteddy[i][1];
+      pos[2] = acteddy[i][2];
+
+      //printf("posx= %f, posy= %f, posz= %f\n", pos[0] , pos[1], pos[2] );
+      //printf("tlx= %f, tly= %f, tlz= %f\n", ttploc[0] , ttploc[1], ttploc[2] );
+
+      arg = 0.0;
+      % for j in range(ndims):
+        delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);
+        arg += -0.5*invsigma2*invls2*delta2[${j}];
+      % endfor
+
+      g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? invsigma3*gc3*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
+      
+      eps[0] = acteddy[i][4];
+      eps[1] = acteddy[i][5];
+      eps[2] = acteddy[i][6];
+      
+      % for j in range(ndims): 
+          utilde[${j}] += eps[${j}]*g;
+      % endfor
+    }
+  }
   
   % for i in range(ndims): 
     utilde[${i}] *= rootrs;
   % endfor
   
-  xloc2 = -0.5*3.141592654*(xin-ttploc[0])*(xin-ttploc[0])*invls2;
+  xloc2 = -0.5*3.141592654*ttploc[0]*ttploc[0]*invls2;
   
-  clipx = ttploc[0] < xmax ? ttploc[0] > xmin ? ${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'xloc2')} : 0.0: 0.0;
-  clipy = ttploc[1] < ymax ? ttploc[1] > ymin ? 1.0 : 0.0: 0.0;
-  clipz = ttploc[2] < zmax ? ttploc[2] > zmin ? 1.0 : 0.0: 0.0;
+  sclip = ttploc[0] < xmax ? ttploc[0] > xmin ? (ubar/ls)*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'xloc2')} : 0.0: 0.0;
   
-  clip = clipx;
-  
-  src[0] += srafac*utilde[0]*(ubar/ls)*clip;
-  
+  src[0] += srafac*utilde[0]*sclip;
   % for i in range(ndims):
-    src[${i+1}] += u[0]*utilde[${i}]*(ubar/ls)*clip;
+    src[${i+1}] += u[0]*utilde[${i}]*sclip;
   % endfor
-  
-  fpdtype_t udotu_fluct = ${pyfr.dot('utilde[{i}]', i=(0, ndims))};
-        
-  src[${nvars-1}] += 0.5*u[0]*udotu_fluct*(ubar/ls)*clip;
+  fpdtype_t udotu_fluct = ${pyfr.dot('utilde[{i}]', i=(0, ndims))};     
+  src[${nvars-1}] += 0.5*u[0]*udotu_fluct*sclip;
   
 </%pyfr:macro>
