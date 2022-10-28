@@ -60,6 +60,9 @@ class Turbulence(BasePlugin):
 
         shift = np.array(c)
 
+        #print(shift[:,None])
+        
+
         qi = e[0]*np.sin(theta/2) 
         qj = e[1]*np.sin(theta/2)
         qk = e[2]*np.sin(theta/2)
@@ -75,16 +78,10 @@ class Turbulence(BasePlugin):
         a32 = 2.0*(qj*qk + qi*qr)
         a33 = 1.0 - 2.0*qi*qi - 2.0*qj*qj
         
-        print(a21)
-
-
         rot = np.array([[a11, a12, a13],
                         [a21, a22, a23],
                         [a31, a32, a33]])
 
-        print(rot)
-        print(shift)
-  
         self.dtol = 0
         
         if hasattr(intg, 'dtmax'):
@@ -142,11 +139,9 @@ class Turbulence(BasePlugin):
 
             neles = eles.neles
             pts = eles.ploc_at_np('upts')
-            pts = np.moveaxis(pts, 1, -1)
-            #print(pts.reshape(3, -1))
-            #print((pts.reshape(3, -1) - shift[:,None]))
-            #print(rot @ (pts.reshape(3, -1) - shift[:,None]))
+            pts = np.moveaxis(pts, 1, 0)
             ptsr = (rot @ (pts.reshape(3, -1) - shift[:,None])).reshape(pts.shape)
+            ptsr = np.moveaxis(ptsr, 0, -1)
             inside = bbox.pts_in_region(ptsr)
 
             ttlut = defaultdict(list)
@@ -186,7 +181,10 @@ class Turbulence(BasePlugin):
                             nvmx = shft
 
                 buff = np.full((nvmx, nparams, neles), 0.0)
-                actbuff = {'geid': eids, 'pts': ptsr, 'trcl': 0.0, 'neles': neles, 'etype': etype, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'})}
+                actbuff = {'geid': eids, 'trcl': 0.0, 'neles': neles, 'etype': etype, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'})}
+
+                print(c)
+                print(shift)
 
                 eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
                 {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac,

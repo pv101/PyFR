@@ -45,6 +45,10 @@
   fpdtype_t cy = ${cy};
   fpdtype_t cz = ${cz};
 
+  //printf("|x ${cx} %f |",cx);
+  //printf("|y ${cy} %f |",cy);
+  //printf("|z ${cz} %f |",cz);
+
   tploc[0]=ploc[0]-cx;
   tploc[1]=ploc[1]-cy;
   tploc[2]=ploc[2]-cz;
