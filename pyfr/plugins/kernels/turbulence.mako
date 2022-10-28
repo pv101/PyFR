@@ -66,9 +66,6 @@
       pos[1] = acteddy[i][1];
       pos[2] = acteddy[i][2];
 
-      //printf("posx= %f, posy= %f, posz= %f\n", pos[0] , pos[1], pos[2] );
-      //printf("tlx= %f, tly= %f, tlz= %f\n", ttploc[0] , ttploc[1], ttploc[2] );
-
       arg = 0.0;
       % for j in range(ndims):
         delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);
