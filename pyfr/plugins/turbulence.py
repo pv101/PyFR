@@ -23,6 +23,8 @@ class Turbulence(BasePlugin):
         self.tnext = intg.tcurr
         self.tend = intg.tend
 
+        self.fdptype = intg.backend.fpdtype
+
         btol = 0.1
         nparams = 9
 
@@ -59,9 +61,6 @@ class Turbulence(BasePlugin):
         e = self.cfg.getliteral(cfgsect, 'rot-axis')
 
         shift = np.array(c)
-
-        #print(shift[:,None])
-        
 
         qi = e[0]*np.sin(theta/2) 
         qj = e[1]*np.sin(theta/2)
@@ -189,10 +188,8 @@ class Turbulence(BasePlugin):
                 eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
                 {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac,
                  'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax,
-                 'sigma' : sigma, 'rootrs': rootrs, 'gc': gc,
-                 'a11': a11, 'a12': a12, 'a13': a13, 'a21': a21, 'a22': a22, 'a23': a23, 'a31': a31, 'a32': a32, 'a33': a33,
-                 'cx': c[0], 'cy': c[1], 'cz': c[2]
-                 })
+                 'sigma' : sigma, 'rootrs': rootrs, 'gc': gc, 'rot': rot, 'shift': shift
+                })
 
                 eles._set_external('acteddy',
                                    f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',

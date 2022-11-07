@@ -32,30 +32,10 @@
   fpdtype_t ymax = ${ymax};
   fpdtype_t zmin = ${zmin};
   fpdtype_t zmax = ${zmax};
-  fpdtype_t a11 = ${a11};
-  fpdtype_t a12 = ${a12};
-  fpdtype_t a13 = ${a13};
-  fpdtype_t a21 = ${a21};
-  fpdtype_t a22 = ${a22};
-  fpdtype_t a23 = ${a23};
-  fpdtype_t a31 = ${a31};
-  fpdtype_t a32 = ${a32};
-  fpdtype_t a33 = ${a33};
-  fpdtype_t cx = ${cx};
-  fpdtype_t cy = ${cy};
-  fpdtype_t cz = ${cz};
 
-  //printf("|x ${cx} %f |",cx);
-  //printf("|y ${cy} %f |",cy);
-  //printf("|z ${cz} %f |",cz);
-
-  tploc[0]=ploc[0]-cx;
-  tploc[1]=ploc[1]-cy;
-  tploc[2]=ploc[2]-cz;
-
-  ttploc[0] = a11*tploc[0] + a12*tploc[1] + a13*tploc[2];
-  ttploc[1] = a21*tploc[0] + a22*tploc[1] + a23*tploc[2];
-  ttploc[2] = a31*tploc[0] + a32*tploc[1] + a33*tploc[2];
+  % for i, r in enumerate(rot):
+    ttploc[${i}] = ${' + '.join(f'{r[j]}*(ploc[{j}] - {shift[j]})' for j in range(3))};
+  % endfor
 
   int i;
   for (int i = 0; i < ${nvmax}; i++)
