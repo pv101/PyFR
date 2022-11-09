@@ -207,6 +207,7 @@ class Turbulence(BasePlugin):
         if tcurr+self.dtol >= self.tnext:
             for abid, actbuff in enumerate(self.actbuffs):    
                 if actbuff['trcl'] <= self.tnext:
+                    print("hello")
                     trcl = np.inf
                     for geid, xttluts in actbuff['xttlut'].items():
                         if xttluts['vid'].any():
@@ -222,5 +223,7 @@ class Turbulence(BasePlugin):
                                 self.actbuffs[abid]['xttlut'][geid] = xttluts[shft:]
                                 if self.actbuffs[abid]['xttlut'][geid]['vid'].any() and (self.actbuffs[abid]['buff'][-1,geid]['ts'] < trcl):
                                     trcl = self.actbuffs[abid]['buff']['ts'][-1,geid]
+                    self.actbuffs[abid]['trcl'] = trcl
                     self.actbuffs[abid]['acteddy'].set(np.moveaxis(structured_to_unstructured(actbuff['buff']), 2, 1))
             self.tnext = min(etype['trcl'] for etype in self.actbuffs)
+            print(self.tnext)
