@@ -30,7 +30,7 @@ class Turbulence(BasePlugin):
         self.xttlutdtype = np.dtype([('vid', '<i4'), ('ts', fdptype), ('te', fdptype)])
         self.buffdtype = np.dtype([('loci', fdptype, 3), ('ti', fdptype), ('eps', fdptype, 3), ('ts', fdptype), ('te', fdptype)])
         
-        btol = 0.1
+        btol = 0.001
         nparams = 9
 
         gamma = self.cfg.getfloat('constants', 'gamma')
@@ -176,6 +176,8 @@ class Turbulence(BasePlugin):
                         shft = next((j for j,v in enumerate(actl['ts']) if v > te+btol),len(actl)-1) - i + 1
                         if shft > nvmx:
                             nvmx = shft
+                            
+                print(nvmx)            
 
                 #buff = np.full((nvmx, nparams, neles), 0.0)
 
@@ -207,7 +209,7 @@ class Turbulence(BasePlugin):
         if tcurr+self.dtol >= self.tnext:
             for abid, actbuff in enumerate(self.actbuffs):    
                 if actbuff['trcl'] <= self.tnext:
-                    print("hello")
+                    #print("hello")
                     trcl = np.inf
                     for geid, xttluts in actbuff['xttlut'].items():
                         if xttluts['vid'].any():
@@ -226,4 +228,4 @@ class Turbulence(BasePlugin):
                     self.actbuffs[abid]['trcl'] = trcl
                     self.actbuffs[abid]['acteddy'].set(np.moveaxis(structured_to_unstructured(actbuff['buff']), 2, 1))
             self.tnext = min(etype['trcl'] for etype in self.actbuffs)
-            print(self.tnext)
+            #print(self.tnext)
