@@ -31,7 +31,7 @@ class Turbulence(BasePlugin):
         self.xttlutdtype = np.dtype([('vid', '<i4'), ('ts', fdptype), ('te', fdptype)])
         self.buffdtype = np.dtype([('loci', fdptype, 3), ('ti', fdptype), ('eps', fdptype, 3), ('ts', fdptype), ('te', fdptype)])
         
-        btol = 1.0
+        btol = 0.001
         nparams = 9
 
         gamma = self.cfg.getfloat('constants', 'gamma')
