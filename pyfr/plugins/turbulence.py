@@ -3,6 +3,7 @@
 import math
 import numpy as np
 import random
+import time
 import uuid
 
 from collections import defaultdict
@@ -30,7 +31,7 @@ class Turbulence(BasePlugin):
         self.xttlutdtype = np.dtype([('vid', '<i4'), ('ts', fdptype), ('te', fdptype)])
         self.buffdtype = np.dtype([('loci', fdptype, 3), ('ti', fdptype), ('eps', fdptype, 3), ('ts', fdptype), ('te', fdptype)])
         
-        btol = 0.001
+        btol = 1.0
         nparams = 9
 
         gamma = self.cfg.getfloat('constants', 'gamma')
@@ -207,6 +208,7 @@ class Turbulence(BasePlugin):
         
         tcurr = intg.tcurr
         if tcurr+self.dtol >= self.tnext:
+            t = time.time()
             for abid, actbuff in enumerate(self.actbuffs):    
                 if actbuff['trcl'] <= self.tnext:
                     #print("hello")
@@ -228,4 +230,4 @@ class Turbulence(BasePlugin):
                     self.actbuffs[abid]['trcl'] = trcl
                     self.actbuffs[abid]['acteddy'].set(np.moveaxis(structured_to_unstructured(actbuff['buff']), 2, 1))
             self.tnext = min(etype['trcl'] for etype in self.actbuffs)
-            #print(self.tnext)
+            print(time.time()-t)
