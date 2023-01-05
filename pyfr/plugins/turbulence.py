@@ -27,12 +27,12 @@ class Turbulence(BasePlugin):
 
         fdptype = intg.backend.fpdtype
 
-        self.vortdtype = np.dtype([('loci', fdptype, 3), ('ti', fdptype), ('eps', fdptype, 3)])
+        self.vortdtype = np.dtype([('loci', fdptype, 3), ('ti', fdptype), ('eps', fdptype)])
         self.xttlutdtype = np.dtype([('vid', '<i4'), ('ts', fdptype), ('te', fdptype)])
-        self.buffdtype = np.dtype([('loci', fdptype, 3), ('ti', fdptype), ('eps', fdptype, 3), ('ts', fdptype), ('te', fdptype)])
+        self.buffdtype = np.dtype([('loci', fdptype, 3), ('ti', fdptype), ('eps', fdptype), ('ts', fdptype), ('te', fdptype)])
         
         btol = 0.001
-        nparams = 9
+        nparams = 7
 
         gamma = self.cfg.getfloat('constants', 'gamma')
         rhobar = self.cfg.getfloat(cfgsect,'rho-bar')
@@ -97,21 +97,19 @@ class Turbulence(BasePlugin):
                     xinit = xmin
                 yinit = ymin + (ymax-ymin)*rng.random()
                 zinit = zmin + (zmax-zmin)*rng.random()
-                epsx = rng.choice([-1,1])
-                epsy = rng.choice([-1,1])
-                epsz = rng.choice([-1,1])
+                eps = rng.integers(8)
                 if t >= self.tbegin:
-                    xtemp.append(((xinit,yinit,zinit),t,(epsx,epsy,epsz)))
+                    xtemp.append(((xinit,yinit,zinit),t,eps))
                     if periodicdim == 'y':
                         if yinit+ls>ymax:
-                            xtemp.append(((xinit,ymin-(ymax-yinit),zinit),t,(epsx,epsy,epsz)))
+                            xtemp.append(((xinit,ymin-(ymax-yinit),zinit),t,eps))
                         if yinit-ls<ymin:
-                            xtemp.append(((xinit,ymax+(yinit-ymin),zinit),t,(epsx,epsy,epsz)))
+                            xtemp.append(((xinit,ymax+(yinit-ymin),zinit),t,eps))
                     if periodicdim == 'z':
                         if zinit+ls>zmax:
-                            xtemp.append(((xinit,yinit,zmin-(zmax-zinit)),t,(epsx,epsy,epsz)))
+                            xtemp.append(((xinit,yinit,zmin-(zmax-zinit)),t,eps))
                         if zinit-ls<zmin:
-                            xtemp.append(((xinit,yinit,zmax+(zinit-zmin)),t,(epsx,epsy,epsz)))
+                            xtemp.append(((xinit,yinit,zmax+(zinit-zmin)),t,eps))
                 t += (xmax-xinit)/ubar
                 initial = False
             vid += 1

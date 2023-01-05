@@ -16,6 +16,7 @@
   fpdtype_t pos[${ndims}];
   fpdtype_t tploc[${ndims}];
   fpdtype_t ttploc[${ndims}];
+  int epsenc;
   fpdtype_t eps[${ndims}];
   fpdtype_t delta2[${ndims}];
   fpdtype_t arg;
@@ -66,10 +67,12 @@
       
       //g = 1.0;
       
-      eps[0] = acteddy[i][4];
-      eps[1] = acteddy[i][5];
-      eps[2] = acteddy[i][6];
+      epsenc = acteddy[i][4];
       
+      eps[0] = (epsenc & 1) ? -1 : 1;
+      eps[1] = (epsenc & 2) ? -1 : 1;
+      eps[2] = (epsenc & 4) ? -1 : 1;
+         
       % for j in range(ndims): 
         utilde[${j}] += eps[${j}]*g;
       % endfor
