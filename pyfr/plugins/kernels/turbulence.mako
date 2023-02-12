@@ -35,7 +35,16 @@
   fpdtype_t zmax = ${zmax};
   fpdtype_t fac = -0.5*invsigma2*invls2;
   fpdtype_t fac2 = invsigma3*gc3;
-
+  fpdtype_t acteddyl[${nvmax}][4];
+  int epsl[${nvmax}];
+  
+  % for i in range(nvmax):
+    % for j in range(4):
+      acteddyl[${i}][${j}] = acteddy[${i}][${j}];
+    % endfor
+    epsl[${i}] = acteddy[${i}][4];
+  % endfor
+  
   % for i, r in enumerate(rot):
     ttploc[${i}] = ${' + '.join(f'{r[j]}*(ploc[{j}] - {shift[j]})' for j in range(3))};
   % endfor
@@ -43,15 +52,15 @@
   int i;
   for (int i = 0; i < ${nvmax}; i++)
   {
-    //if (acteddy[i][7] > t)
+    //if (acteddyl[i][5] > t)
     //{
     //  break;
     //}
-    //else if (acteddy[i][8] > t)
+    //else if (acteddyl[i][6] > t)
     //{
-      pos[0] = acteddy[i][0] + (t-acteddy[i][3])*ubar;
-      pos[1] = acteddy[i][1];
-      pos[2] = acteddy[i][2];
+      pos[0] = acteddyl[i][0] + (t-acteddyl[i][3])*ubar;
+      pos[1] = acteddyl[i][1];
+      pos[2] = acteddyl[i][2];
       
       //pos[0] = 0.5 + (t-0.0)*ubar;
       //pos[1] = 0.5;
@@ -67,11 +76,11 @@
       
       //g = 1.0;
       
-      epsenc = acteddy[i][4];
+      //epsenc = epsl[i];
       
-      eps[0] = (epsenc & 1) ? -1 : 1;
-      eps[1] = (epsenc & 2) ? -1 : 1;
-      eps[2] = (epsenc & 4) ? -1 : 1;
+      eps[0] = (epsl[i] & 1) ? -1 : 1;
+      eps[1] = (epsl[i] & 2) ? -1 : 1;
+      eps[2] = (epsl[i] & 4) ? -1 : 1;
          
       % for j in range(ndims): 
         utilde[${j}] += eps[${j}]*g;

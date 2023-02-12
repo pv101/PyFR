@@ -97,7 +97,13 @@ class Turbulence(BasePlugin):
                     xinit = xmin
                 yinit = ymin + (ymax-ymin)*rng.random()
                 zinit = zmin + (zmax-zmin)*rng.random()
-                eps = rng.integers(8)
+                epsx = rng.choice([-1,1])
+                epsy = rng.choice([-1,1])
+                epsz = rng.choice([-1,1])
+                 
+                eps = epsx*1.0 + epsy*2.0 + epsz*4.0
+                
+                #eps = rng.integers(8)
                 if t >= self.tbegin:
                     xtemp.append(((xinit,yinit,zinit),t,eps))
                     if periodicdim == 'y':
