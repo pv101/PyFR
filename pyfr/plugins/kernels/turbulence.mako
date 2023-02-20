@@ -35,14 +35,21 @@
   fpdtype_t zmax = ${zmax};
   fpdtype_t fac = -0.5*invsigma2*invls2;
   fpdtype_t fac2 = invsigma3*gc3;
-  fpdtype_t acteddyl[${nvmax}][4];
+  fpdtype_t acteddyl[${nvmax}][3];
   int epsl[${nvmax}];
+  uint64_t state[${nvmax}];
+  uint32_t xorshifted;
+  uint64_t oldstate;
+  uint32_t rot;
+  uint32_t out;
+  fpdtype_t pos1recon;
   
   % for i in range(nvmax):
-    % for j in range(4):
+    % for j in range(3):
       acteddyl[${i}][${j}] = acteddy[${i}][${j}];
     % endfor
-    epsl[${i}] = acteddy[${i}][4];
+    epsl[${i}] = acteddy[${i}][3];
+    state[${i}] = acteddy[${i}][4];
   % endfor
   
   % for i, r in enumerate(rot):
@@ -58,14 +65,46 @@
     //}
     //else if (acteddyl[i][6] > t)
     //{
-      pos[0] = acteddyl[i][0] + (t-acteddyl[i][3])*ubar;
-      pos[1] = acteddyl[i][1];
-      pos[2] = acteddyl[i][2];
+      pos[0] = xmin + (t-acteddyl[i][2])*ubar;
+      //if (state[i] > 0)
+      //{
+      //  printf("state = %llu\n", state[i]);
+      //}
+      pos[1] = acteddyl[i][0];
+      pos[2] = acteddyl[i][1];
       
       //pos[0] = 0.5 + (t-0.0)*ubar;
       //pos[1] = 0.5;
       //pos[2] = 0.5;
-
+      
+      oldstate = state[i];
+      state[i] = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1);
+      xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+      rot = oldstate >> 59u;
+      out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+      pos1recon = ymin + (ymax-ymin)*ldexp((double)out, -32);
+      if (out > 0)
+      {
+        printf("recon = %.17lf, actual = %.17lf\n", pos1recon, pos[1]);
+      }
+      
+      //poos1 = out/max
+      
+      //oldstate = state[i]
+      //state[i] = (oldstate * multiplier) + (increment | self.b1)
+      //xorshifted = np.uint32(((oldstate >> self.b18) ^ oldstate) >> self.b27)
+      //rot = np.uint32(oldstate >> self.b59)
+      //out = np.uint32((xorshifted >> rot) | (xorshifted << ((-rot) & self.b31)))
+      //poos2 = out/max
+      
+      //oldstate = state[i]
+      //state[i] = (oldstate * multiplier) + (increment | self.b1)
+      //xorshifted = np.uint32(((oldstate >> self.b18) ^ oldstate) >> self.b27)
+      //rot = np.uint32(oldstate >> self.b59)
+      //out = np.uint32((xorshifted >> rot) | (xorshifted << ((-rot) & self.b31)))
+      //eeps = out % 8
+      
+      
       arg = 0.0;
       % for j in range(ndims):
         delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);

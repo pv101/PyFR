@@ -12,6 +12,31 @@ from pyfr.plugins.base import BasePlugin
 from pyfr.regions import BoxRegion, RotatedBoxRegion
 from pyfr.mpiutil import get_comm_rank_root
 
+class PCG32:
+    def __init__(self, seed):
+        self.state = np.uint64(seed + 0x4d595df4d0f33173)
+        self.multiplier = np.uint64(6364136223846793005)
+        self.increment = np.uint64(1442695040888963407)
+        self.b1 = np.uint32(1)
+        self.b18 = np.uint32(18)
+        self.b27 = np.uint32(27)
+        self.b59 = np.uint32(59)
+        self.b31 = np.uint32(31)
+    def rand(self):
+        oldstate = self.state
+        self.state = (oldstate * self.multiplier) + (self.increment | self.b1)
+        xorshifted = np.uint32(((oldstate >> self.b18) ^ oldstate) >> self.b27)
+        rot = np.uint32(oldstate >> self.b59)
+        return np.uint32((xorshifted >> rot) | (xorshifted << ((-rot) & self.b31)))
+    def random(self):
+        return np.ldexp(self.rand(),-32)
+    def getstate(self):
+        return self.state
+    def randint(self, a, b):
+        return a + self.rand() % (b - a)
+    def choice(self, seq):
+        return seq[self.randint(0, len(seq))]
+        
 class Turbulence(BasePlugin):
     name = 'turbulence'
     systems = ['navier-stokes']
@@ -27,11 +52,11 @@ class Turbulence(BasePlugin):
 
         fdptype = intg.backend.fpdtype
 
-        self.vortdtype = np.dtype([('loci', fdptype, 3), ('ti', fdptype), ('eps', fdptype)])
+        self.vortdtype = np.dtype([('loci', fdptype, 2), ('ti', fdptype), ('eps', fdptype), ('state', fdptype)])
         self.xttlutdtype = np.dtype([('vid', '<i4'), ('ts', fdptype), ('te', fdptype)])
-        self.buffdtype = np.dtype([('loci', fdptype, 3), ('ti', fdptype), ('eps', fdptype), ('ts', fdptype), ('te', fdptype)])
+        self.buffdtype = np.dtype([('loci', fdptype, 2), ('ti', fdptype), ('eps', fdptype), ('state', fdptype), ('ts', fdptype), ('te', fdptype)])
         
-        btol = 0.001
+        btol = 0.0001
         nparams = 7
 
         gamma = self.cfg.getfloat('constants', 'gamma')
@@ -78,6 +103,8 @@ class Turbulence(BasePlugin):
 
         seed = self.cfg.getint(cfgsect, 'seed')
         rng = np.random.default_rng(seed)
+        
+        pcg32rng = PCG32(42)
 
         ######################
         # Make vortex buffer #
@@ -88,38 +115,43 @@ class Turbulence(BasePlugin):
         xtemp = []
 
         while vid <= nvorts:
-            t = self.tstart # start right at the start
-            initial = True
+            t = self.tstart + (xmax-xmin)*pcg32rng.random()/ubar
             while t < self.tend:
-                if initial:
-                    xinit = xmin + (xmax-xmin)*rng.random()
-                else:
-                    xinit = xmin
-                yinit = ymin + (ymax-ymin)*rng.random()
-                zinit = zmin + (zmax-zmin)*rng.random()
-                epsx = rng.choice([-1,1])
-                epsy = rng.choice([-1,1])
-                epsz = rng.choice([-1,1])
-                 
-                eps = epsx*1.0 + epsy*2.0 + epsz*4.0
+                #aa = pcg32rng.choice([-1,1])
+                #print(aa)
+                #print()
+                state = pcg32rng.getstate()
+                yinit = ymin + (ymax-ymin)*pcg32rng.random()
+                zinit = zmin + (zmax-zmin)*pcg32rng.random()
+                eps = 1.0*pcg32rng.randint(0,8)
                 
-                #eps = rng.integers(8)
-                if t >= self.tbegin:
-                    xtemp.append(((xinit,yinit,zinit),t,eps))
-                    if periodicdim == 'y':
-                        if yinit+ls>ymax:
-                            xtemp.append(((xinit,ymin-(ymax-yinit),zinit),t,eps))
-                        if yinit-ls<ymin:
-                            xtemp.append(((xinit,ymax+(yinit-ymin),zinit),t,eps))
-                    if periodicdim == 'z':
-                        if zinit+ls>zmax:
-                            xtemp.append(((xinit,yinit,zmin-(zmax-zinit)),t,eps))
-                        if zinit-ls<zmin:
-                            xtemp.append(((xinit,yinit,zmax+(zinit-zmin)),t,eps))
-                t += (xmax-xinit)/ubar
-                initial = False
+                #epsx = pcg32rng.choice([0,1])
+                #epsy = pcg32rng.choice([0,1])
+                #epsz = pcg32rng.choice([0,1]) 
+                #eps = epsx*1.0 + epsy*2.0 + epsz*4.0
+                
+                print(t)
+                print(yinit)
+                print(zinit)
+                print(eps)
+                print(state)
+
+                if t+((xmax-xmin)/ubar) >= self.tbegin:
+                    xtemp.append(((yinit,zinit),t,eps,state))
+                    #if periodicdim == 'y':
+                    #    if yinit+ls>ymax:
+                    #        xtemp.append(((ymin-(ymax-yinit),zinit),t,eps))
+                    #    if yinit-ls<ymin:
+                    #        xtemp.append(((ymax+(yinit-ymin),zinit),t,eps))
+                    #if periodicdim == 'z':
+                    #    if zinit+ls>zmax:
+                    #        xtemp.append(((yinit,zmin-(zmax-zinit)),t,eps))
+                    #    if zinit-ls<zmin:
+                    #        xtemp.append(((yinit,zmax+(zinit-zmin)),t,eps))
+                t += (xmax-xmin)/ubar
             vid += 1
 
+        # should check that there are some vorts and do nothing if not
         self.xvortbuff = np.asarray(xtemp, self.vortdtype)
 
         #####################
@@ -146,8 +178,8 @@ class Turbulence(BasePlugin):
                 eids = np.any(inside, axis=0).nonzero()[0] # eles in injection box
                 ptsri = ptsr[:,eids,:] # points in injection box
                 for vid, vort in enumerate(self.xvortbuff):
-                    vbox = BoxRegion([vort['loci'][0]-ls, vort['loci'][1]-ls, vort['loci'][2]-ls],
-                                     [xmax+ls, vort['loci'][1]+ls, vort['loci'][2]+ls])
+                    vbox = BoxRegion([xmin-ls, vort['loci'][0]-ls, vort['loci'][1]-ls],
+                                     [xmax+ls, vort['loci'][0]+ls, vort['loci'][1]+ls])
                     elestemp = []               
                     vinside = vbox.pts_in_region(ptsri)
 
@@ -157,7 +189,7 @@ class Turbulence(BasePlugin):
                     for eid in elestemp:
                         exmin = ptsri[:,eid,0].min()
                         exmax = ptsri[:,eid,0].max()
-                        ts = max(vort['ti'], vort['ti'] + ((exmin - vort['loci'][0] - ls)/ubar))
+                        ts = max(vort['ti'], vort['ti'] + ((exmin - xmin - ls)/ubar))
                         te = ts + (exmax-exmin+2*ls)/ubar
                         ttlut[eids[eid]].append((vid,ts,te))
 
@@ -182,6 +214,7 @@ class Turbulence(BasePlugin):
                         if shft > nvmx:
                             nvmx = shft
                             
+                #nvmx = 13
                 print(nvmx)            
 
                 #buff = np.full((nvmx, nparams, neles), 0.0)
@@ -225,7 +258,7 @@ class Turbulence(BasePlugin):
                                 newb = np.zeros(shft, self.buffdtype)
                                 xxxx = self.xvortbuff[xttluts['vid'][:shft]]
                                 pad = shft-xxxx.shape[0]
-                                newb[['loci', 'ti', 'eps']] = np.pad(xxxx, (0,pad), 'constant')
+                                newb[['loci', 'ti', 'eps', 'state']] = np.pad(xxxx, (0,pad), 'constant')
                                 newb[['ts', 'te']] = np.pad(xttluts[['ts', 'te']][:shft], (0,pad), 'constant')
                                 self.actbuffs[abid]['buff'][:,geid] = np.concatenate((actbuff['buff'][shft:,geid],newb))
                                 self.actbuffs[abid]['xttlut'][geid] = xttluts[shft:]
