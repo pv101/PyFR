@@ -15,6 +15,7 @@ from pyfr.mpiutil import get_comm_rank_root
 class PCG32:
     def __init__(self, seed):
         self.state = np.uint64(seed + 0x4d595df4d0f33173)
+        #self.state = np.uint64(seed)
         self.multiplier = np.uint64(6364136223846793005)
         self.increment = np.uint64(1442695040888963407)
         self.b1 = np.uint32(1)
@@ -106,6 +107,8 @@ class Turbulence(BasePlugin):
         
         pcg32rng = PCG32(42)
 
+
+
         ######################
         # Make vortex buffer #
         ######################
@@ -120,21 +123,33 @@ class Turbulence(BasePlugin):
                 #aa = pcg32rng.choice([-1,1])
                 #print(aa)
                 #print()
+                #print(" ---- ")
                 state = pcg32rng.getstate()
+                #print(state)
                 yinit = ymin + (ymax-ymin)*pcg32rng.random()
+                #print(yinit)
+                #state = pcg32rng.getstate()
+                #print(state)
                 zinit = zmin + (zmax-zmin)*pcg32rng.random()
+                #print(zinit)
+                #state = pcg32rng.getstate()
+                #print(state)
                 eps = 1.0*pcg32rng.randint(0,8)
+                #print(eps)
+                #state = pcg32rng.getstate()
+                #print(state)
+                #print(" ---- ")
                 
                 #epsx = pcg32rng.choice([0,1])
                 #epsy = pcg32rng.choice([0,1])
                 #epsz = pcg32rng.choice([0,1]) 
                 #eps = epsx*1.0 + epsy*2.0 + epsz*4.0
                 
-                print(t)
-                print(yinit)
-                print(zinit)
-                print(eps)
-                print(state)
+                #print(t)
+                #print(yinit)
+                #print(zinit)
+                #print(eps)
+                #print(state)
 
                 if t+((xmax-xmin)/ubar) >= self.tbegin:
                     xtemp.append(((yinit,zinit),t,eps,state))

@@ -40,9 +40,12 @@
   uint64_t state[${nvmax}];
   uint32_t xorshifted;
   uint64_t oldstate;
+  uint64_t statel;
   uint32_t rot;
   uint32_t out;
   fpdtype_t pos1recon;
+  fpdtype_t pos2recon;
+  int epsrecon;
   
   % for i in range(nvmax):
     % for j in range(3):
@@ -78,31 +81,37 @@
       //pos[2] = 0.5;
       
       oldstate = state[i];
-      state[i] = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1);
+      statel = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
       xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
       rot = oldstate >> 59u;
       out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
       pos1recon = ymin + (ymax-ymin)*ldexp((double)out, -32);
-      if (out > 0)
+      if (pos[1] > 0)
       {
-        printf("recon = %.17lf, actual = %.17lf\n", pos1recon, pos[1]);
+        printf("recon1 = %.17lf, actual1 = %.17lf, oldstate = %llu, newstate = %llu\n", pos1recon, pos[1], oldstate, statel);
       }
       
-      //poos1 = out/max
+      oldstate = statel;
+      statel = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+      xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+      rot = oldstate >> 59u;
+      out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+      pos2recon = zmin + (zmax-zmin)*ldexp((double)out, -32);
+      if (pos[2] > 0)
+      {
+        //printf("recon2 = %.17lf, actual2 = %.17lf, oldstate = %llu, newstate = %llu\n", pos2recon, pos[2], oldstate, statel);
+      }
       
-      //oldstate = state[i]
-      //state[i] = (oldstate * multiplier) + (increment | self.b1)
-      //xorshifted = np.uint32(((oldstate >> self.b18) ^ oldstate) >> self.b27)
-      //rot = np.uint32(oldstate >> self.b59)
-      //out = np.uint32((xorshifted >> rot) | (xorshifted << ((-rot) & self.b31)))
-      //poos2 = out/max
-      
-      //oldstate = state[i]
-      //state[i] = (oldstate * multiplier) + (increment | self.b1)
-      //xorshifted = np.uint32(((oldstate >> self.b18) ^ oldstate) >> self.b27)
-      //rot = np.uint32(oldstate >> self.b59)
-      //out = np.uint32((xorshifted >> rot) | (xorshifted << ((-rot) & self.b31)))
-      //eeps = out % 8
+      oldstate = statel;
+      statel = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+      xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+      rot = oldstate >> 59u;
+      out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+      epsrecon = out % 8;
+      if (epsl[i] > 0)
+      {
+        //printf("epsrecon = %.17lf, actualeps = %.17lf, oldstate = %llu, newstate = %llu\n", epsrecon, epsl[i], oldstate, statel);
+      }
       
       
       arg = 0.0;
