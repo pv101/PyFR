@@ -229,7 +229,7 @@ class Turbulence(BasePlugin):
                         if shft > nvmx:
                             nvmx = shft
                             
-                #nvmx = 13
+                #nvmx = 20
                 print(nvmx)            
 
                 #buff = np.full((nvmx, nparams, neles), 0.0)
@@ -289,7 +289,7 @@ class Turbulence(BasePlugin):
                                     trcl = self.actbuffs[abid]['buff']['ts'][-1,geid]
                     self.actbuffs[abid]['trcl'] = trcl
                     self.actbuffs[abid]['acteddy'].set(np.moveaxis(structured_to_unstructured(actbuff['buff']), 2, 1))
-                    print(np.repeat(actbuff['buff']['state'][:, np.newaxis, :], 2, axis=1).shape)
+                    #print(np.repeat(actbuff['buff']['state'][:, np.newaxis, :], 2, axis=1).shape)
                     self.actbuffs[abid]['stateeddy'].set(np.repeat(actbuff['buff']['state'][:, np.newaxis, :], 2, axis=1))
             self.tnext = min(etype['trcl'] for etype in self.actbuffs)
             print(time.time()-t)
