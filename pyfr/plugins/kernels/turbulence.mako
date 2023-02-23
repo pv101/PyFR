@@ -38,6 +38,7 @@
   fpdtype_t acteddyl[${nvmax}][3];
   int epsl[${nvmax}];
   uint64_t state[${nvmax}];
+  uint64_t statetrue[${nvmax}];
   uint32_t xorshifted;
   uint64_t oldstate;
   uint64_t statel;
@@ -53,6 +54,7 @@
     % endfor
     epsl[${i}] = acteddy[${i}][3];
     state[${i}] = acteddy[${i}][4];
+    statetrue[${i}] = stateeddy[${i}][0];
   % endfor
   
   % for i, r in enumerate(rot):
@@ -62,6 +64,11 @@
   int i;
   for (int i = 0; i < ${nvmax}; i++)
   {
+    if (statetrue[i] > 0)
+      {
+        //printf("recon1 = %.17lf, actual1 = %.17lf, oldstate = %llu, newstate = %llu\n", pos1recon, pos[1], oldstate, statel);
+        //printf("statetrue = %llu\n", statetrue[i]);
+      }
     //if (acteddyl[i][5] > t)
     //{
     //  break;
@@ -80,7 +87,7 @@
       //pos[1] = 0.5;
       //pos[2] = 0.5;
       
-      oldstate = state[i];
+      oldstate = statetrue[i];
       statel = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
       xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
       rot = oldstate >> 59u;
@@ -89,6 +96,7 @@
       if (pos[1] > 0)
       {
         printf("recon1 = %.17lf, actual1 = %.17lf, oldstate = %llu, newstate = %llu\n", pos1recon, pos[1], oldstate, statel);
+        //printf("recon1 = %.17lf, actual1 = %.17lf, oldstate = %llu, oldstatetrue = %llu\n", pos1recon, pos[1], oldstate, statetrue[i]);
       }
       
       oldstate = statel;
@@ -99,7 +107,7 @@
       pos2recon = zmin + (zmax-zmin)*ldexp((double)out, -32);
       if (pos[2] > 0)
       {
-        //printf("recon2 = %.17lf, actual2 = %.17lf, oldstate = %llu, newstate = %llu\n", pos2recon, pos[2], oldstate, statel);
+        printf("recon2 = %.17lf, actual2 = %.17lf, oldstate = %llu, newstate = %llu\n", pos2recon, pos[2], oldstate, statel);
       }
       
       oldstate = statel;
@@ -110,7 +118,7 @@
       epsrecon = out % 8;
       if (epsl[i] > 0)
       {
-        //printf("epsrecon = %.17lf, actualeps = %.17lf, oldstate = %llu, newstate = %llu\n", epsrecon, epsl[i], oldstate, statel);
+        printf("epsreconv = %d, actualepv = %d\n", epsrecon, epsl[i]);
       }
       
       

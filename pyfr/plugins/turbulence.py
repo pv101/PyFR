@@ -53,9 +53,9 @@ class Turbulence(BasePlugin):
 
         fdptype = intg.backend.fpdtype
 
-        self.vortdtype = np.dtype([('loci', fdptype, 2), ('ti', fdptype), ('eps', fdptype), ('state', fdptype)])
+        self.vortdtype = np.dtype([('loci', fdptype, 2), ('ti', fdptype), ('eps', fdptype), ('state', np.uint64)])
         self.xttlutdtype = np.dtype([('vid', '<i4'), ('ts', fdptype), ('te', fdptype)])
-        self.buffdtype = np.dtype([('loci', fdptype, 2), ('ti', fdptype), ('eps', fdptype), ('state', fdptype), ('ts', fdptype), ('te', fdptype)])
+        self.buffdtype = np.dtype([('loci', fdptype, 2), ('ti', fdptype), ('eps', fdptype), ('state', np.uint64), ('ts', fdptype), ('te', fdptype)])
         
         btol = 0.0001
         nparams = 7
@@ -239,7 +239,7 @@ class Turbulence(BasePlugin):
 
                 #actbuff = {'trcl': 0.0, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'})}
 
-                actbuff = {'trcl': 0.0, 'xttlut': xttlut, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'})}
+                actbuff = {'trcl': 0.0, 'xttlut': xttlut, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'}), 'stateeddy': eles._be.matrix((nvmx, 2, neles), tags={'align'}, dtype=np.uint64)}
 
                 eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
                 {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac,
@@ -250,6 +250,14 @@ class Turbulence(BasePlugin):
                 eles._set_external('acteddy',
                                    f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',
                                    value=actbuff['acteddy'])
+                                   
+                eles._set_external('stateeddy',
+                                   f'in broadcast-col uint64_t[{nvmx}][2]',
+                                   value=actbuff['stateeddy'])
+                                   
+                #eles._set_external('stateeddy',
+                #                   f'in broadcast-row uint64_t[{nvmx}]',
+                #                   value=actbuff['stateeddy'])
 
                 self.actbuffs.append(actbuff)
 
@@ -281,5 +289,7 @@ class Turbulence(BasePlugin):
                                     trcl = self.actbuffs[abid]['buff']['ts'][-1,geid]
                     self.actbuffs[abid]['trcl'] = trcl
                     self.actbuffs[abid]['acteddy'].set(np.moveaxis(structured_to_unstructured(actbuff['buff']), 2, 1))
+                    print(np.repeat(actbuff['buff']['state'][:, np.newaxis, :], 2, axis=1).shape)
+                    self.actbuffs[abid]['stateeddy'].set(np.repeat(actbuff['buff']['state'][:, np.newaxis, :], 2, axis=1))
             self.tnext = min(etype['trcl'] for etype in self.actbuffs)
             print(time.time()-t)
