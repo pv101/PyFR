@@ -9,14 +9,11 @@
   fpdtype_t gc3 = ${gc}*${gc}*${gc};
   fpdtype_t rootrs = ${rootrs};
   fpdtype_t srafac = ${srafac};
-  fpdtype_t invsigma = 1.0/${sigma};
   fpdtype_t invsigma2 = 1.0/(${sigma}*${sigma});
   fpdtype_t invsigma3 = 1.0/(${sigma}*${sigma}*${sigma});
   fpdtype_t ubar = ${ubar};
   fpdtype_t pos[${ndims}];
-  fpdtype_t tploc[${ndims}];
   fpdtype_t ttploc[${ndims}];
-  int epsenc;
   fpdtype_t eps[${ndims}];
   fpdtype_t delta2[${ndims}];
   fpdtype_t arg;
@@ -35,24 +32,19 @@
   fpdtype_t zmax = ${zmax};
   fpdtype_t fac = -0.5*invsigma2*invls2;
   fpdtype_t fac2 = invsigma3*gc3;
-  fpdtype_t acteddyl[${nvmax}];
-  int epsl[${nvmax}];
+  
+  fpdtype_t tinit[${nvmax}];
   uint64_t state[${nvmax}];
-  uint64_t statetrue[${nvmax}];
   uint32_t xorshifted;
   uint64_t oldstate;
-  uint64_t statel;
+  uint64_t newstate;
   uint32_t rot;
   uint32_t out;
-  fpdtype_t pos1recon;
-  fpdtype_t pos2recon;
-  int epsrecon;
+  int epscomp;
   
   % for i in range(nvmax):
-    acteddyl[${i}] = acteddy[${i}][2];
-    //epsl[${i}] = acteddy[${i}][3];
-    //state[${i}] = acteddy[${i}][4];
-    statetrue[${i}] = stateeddy[${i}][0];
+    tinit[${i}] = acteddy[${i}][2];
+    state[${i}] = stateeddy[${i}][0];
   % endfor
   
   % for i, r in enumerate(rot):
@@ -62,67 +54,29 @@
   int i;
   for (int i = 0; i < ${nvmax}; i++)
   {
-    //if (statetrue[i] > 0)
-      //{
-        //printf("recon1 = %.17lf, actual1 = %.17lf, oldstate = %llu, newstate = %llu\n", pos1recon, pos[1], oldstate, statel);
-        //printf("statetrue = %llu\n", statetrue[i]);
-      //}
-    //if (acteddyl[i][5] > t)
-    //{
-    //  break;
-    //}
-    //else if (acteddyl[i][6] > t)
-    //{
-      pos[0] = xmin + (t-acteddyl[i])*ubar;
-      //if (state[i] > 0)
-      //{
-      //  printf("state = %llu\n", state[i]);
-      //}
-      //pos[1] = acteddyl[i][0];
-      //pos[2] = acteddyl[i][1];
+      pos[0] = xmin + (t-tinit[i])*ubar;
       
-      //pos[0] = 0.5 + (t-0.0)*ubar;
-      //pos[1] = 0.5;
-      //pos[2] = 0.5;
-      
-      oldstate = statetrue[i];
-      statel = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+      oldstate = state[i];
+      newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
       xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
       rot = oldstate >> 59u;
       out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-      pos1recon = ymin + (ymax-ymin)*ldexp((double)out, -32);
-      //if (pos[1] > 0)
-      //{
-        //printf("recon1 = %.17lf, actual1 = %.17lf, oldstate = %llu, newstate = %llu\n", pos1recon, pos[1], oldstate, statel);
-        //printf("recon1 = %.17lf, actual1 = %.17lf, oldstate = %llu, oldstatetrue = %llu\n", pos1recon, pos[1], oldstate, statetrue[i]);
-      //}
-      
-      oldstate = statel;
-      statel = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+      pos[1] = ymin + (ymax-ymin)*ldexp((double)out, -32);
+
+      oldstate = newstate;
+      newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
       xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
       rot = oldstate >> 59u;
       out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-      pos2recon = zmin + (zmax-zmin)*ldexp((double)out, -32);
-      //if (pos[2] > 0)
-      //{
-        //printf("recon2 = %.17lf, actual2 = %.17lf, oldstate = %llu, newstate = %llu\n", pos2recon, pos[2], oldstate, statel);
-      //}
-      
-      oldstate = statel;
-      statel = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+      pos[2] = zmin + (zmax-zmin)*ldexp((double)out, -32);
+ 
+      oldstate = newstate;
+      newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
       xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
       rot = oldstate >> 59u;
       out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-      epsrecon = out % 8;
-      //if (epsl[i] > 0)
-      //{
-        //printf("epsreconv = %d, actualepv = %d\n", epsrecon, epsl[i]);
-      //}
-      
-      pos[1] = pos1recon;
-      pos[2] = pos2recon;
-      
-      
+      epscomp = out % 8;
+
       arg = 0.0;
       % for j in range(ndims):
         delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);
@@ -131,22 +85,13 @@
 
       g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? fac2*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
       
-      //g = 1.0;
-      
-      //epsenc = epsl[i];
-      
-      //eps[0] = (epsl[i] & 1) ? -1 : 1;
-      //eps[1] = (epsl[i] & 2) ? -1 : 1;
-      //eps[2] = (epsl[i] & 4) ? -1 : 1;
-      
-      eps[0] = (epsrecon & 1) ? -1 : 1;
-      eps[1] = (epsrecon & 2) ? -1 : 1;
-      eps[2] = (epsrecon & 4) ? -1 : 1;
+      eps[0] = (epscomp & 1) ? -1 : 1;
+      eps[1] = (epscomp & 2) ? -1 : 1;
+      eps[2] = (epscomp & 4) ? -1 : 1;
          
       % for j in range(ndims): 
         utilde[${j}] += eps[${j}]*g;
       % endfor
-    //}
   }
   
   % for i in range(ndims): 
