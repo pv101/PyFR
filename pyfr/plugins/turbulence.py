@@ -229,7 +229,7 @@ class Turbulence(BasePlugin):
                         if shft > nvmx:
                             nvmx = shft
                             
-                #nvmx = 20
+                #nvmx = 13
                 print(nvmx)            
 
                 #buff = np.full((nvmx, nparams, neles), 0.0)
