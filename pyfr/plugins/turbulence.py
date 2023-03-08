@@ -103,11 +103,7 @@ class Turbulence(BasePlugin):
             self.dtol = intg._dt
 
         seed = self.cfg.getint(cfgsect, 'seed')
-        rng = np.random.default_rng(seed)
-        
-        pcg32rng = PCG32(42)
-
-
+        pcg32rng = PCG32(seed)
 
         ######################
         # Make vortex buffer #
@@ -118,52 +114,15 @@ class Turbulence(BasePlugin):
         xtemp = []
 
         while vid <= nvorts:
-            t = self.tstart + (xmax-xmin)*pcg32rng.random()/ubar
-            while t < self.tend:
-                #aa = pcg32rng.choice([-1,1])
-                #print(aa)
-                #print()
-                #print(" ---- ")
+            tinit = self.tstart + (xmax-xmin)*pcg32rng.random()/ubar
+            while tinit < self.tend:
                 state = pcg32rng.getstate()
-                #print(state)
                 yinit = ymin + (ymax-ymin)*pcg32rng.random()
-                #print(yinit)
-                #state = pcg32rng.getstate()
-                #print(state)
                 zinit = zmin + (zmax-zmin)*pcg32rng.random()
-                #print(zinit)
-                #state = pcg32rng.getstate()
-                #print(state)
                 eps = 1.0*pcg32rng.randint(0,8)
-                #print(eps)
-                #state = pcg32rng.getstate()
-                #print(state)
-                #print(" ---- ")
-                
-                #epsx = pcg32rng.choice([0,1])
-                #epsy = pcg32rng.choice([0,1])
-                #epsz = pcg32rng.choice([0,1]) 
-                #eps = epsx*1.0 + epsy*2.0 + epsz*4.0
-                
-                #print(t)
-                #print(yinit)
-                #print(zinit)
-                #print(eps)
-                #print(state)
-
-                if t+((xmax-xmin)/ubar) >= self.tbegin:
-                    xtemp.append(((yinit,zinit),t,eps,state))
-                    #if periodicdim == 'y':
-                    #    if yinit+ls>ymax:
-                    #        xtemp.append(((ymin-(ymax-yinit),zinit),t,eps))
-                    #    if yinit-ls<ymin:
-                    #        xtemp.append(((ymax+(yinit-ymin),zinit),t,eps))
-                    #if periodicdim == 'z':
-                    #    if zinit+ls>zmax:
-                    #        xtemp.append(((yinit,zmin-(zmax-zinit)),t,eps))
-                    #    if zinit-ls<zmin:
-                    #        xtemp.append(((yinit,zmax+(zinit-zmin)),t,eps))
-                t += (xmax-xmin)/ubar
+                if tinit+((xmax-xmin)/ubar) >= self.tbegin:
+                    xtemp.append(((yinit,zinit),tinit,eps,state))
+                tinit += (xmax-xmin)/ubar
             vid += 1
 
         # should check that there are some vorts and do nothing if not
@@ -215,29 +174,14 @@ class Turbulence(BasePlugin):
                     vidx[k] = nv[:,0].astype(int)
                     vtim[k] = nv[:,-2:]
 
-                # nvmx = 0
-                # for leid, actl in vtim.items():
-                #     for i, te in enumerate(actl[:,1]):
-                #         shft = next((j for j,v in enumerate(actl[:,0]) if v > te+btol),len(actl)-1) - i + 1
-                #         if shft > nvmx:
-                #             nvmx = shft
-
                 nvmx = 0
                 for leid, actl in xttlut.items():
                     for i, te in enumerate(actl['te']):
                         shft = next((j for j,v in enumerate(actl['ts']) if v > te+btol),len(actl)-1) - i + 1
                         if shft > nvmx:
                             nvmx = shft
-                            
-                #nvmx = 13
-                print(nvmx)            
-
-                #buff = np.full((nvmx, nparams, neles), 0.0)
 
                 buff = np.zeros((nvmx, neles), self.buffdtype)
-
-
-                #actbuff = {'trcl': 0.0, 'vidx': vidx, 'vtim': vtim, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'})}
 
                 actbuff = {'trcl': 0.0, 'xttlut': xttlut, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'}), 'stateeddy': eles._be.matrix((nvmx, 2, neles), tags={'align'}, dtype=np.uint64)}
 
