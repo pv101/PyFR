@@ -12,10 +12,9 @@ from pyfr.plugins.base import BasePlugin
 from pyfr.regions import BoxRegion, RotatedBoxRegion
 from pyfr.mpiutil import get_comm_rank_root
 
-class PCG32:
+class pcg32:
     def __init__(self, seed):
         self.state = np.uint64(seed + 0x4d595df4d0f33173)
-        #self.state = np.uint64(seed)
         self.multiplier = np.uint64(6364136223846793005)
         self.increment = np.uint64(1442695040888963407)
         self.b1 = np.uint32(1)
@@ -54,8 +53,8 @@ class Turbulence(BasePlugin):
         fdptype = intg.backend.fpdtype
 
         self.vortdtype = np.dtype([('loci', fdptype, 2), ('ti', fdptype), ('eps', fdptype), ('state', np.uint64)])
-        self.xttlutdtype = np.dtype([('vid', '<i4'), ('ts', fdptype), ('te', fdptype)])
-        self.buffdtype = np.dtype([('loci', fdptype, 2), ('ti', fdptype), ('eps', fdptype), ('state', np.uint64), ('ts', fdptype), ('te', fdptype)])
+        self.sstreamdtype = np.dtype([('vid', '<i4'), ('ts', fdptype), ('te', fdptype)])
+        self.buffdtype = np.dtype([('ti', fdptype), ('state', np.uint64)])
         
         btol = 0.0001
         nparams = 7
@@ -103,7 +102,7 @@ class Turbulence(BasePlugin):
             self.dtol = intg._dt
 
         seed = self.cfg.getint(cfgsect, 'seed')
-        pcg32rng = PCG32(seed)
+        pcg32rng = pcg32(seed)
 
         ######################
         # Make vortex buffer #
@@ -126,7 +125,7 @@ class Turbulence(BasePlugin):
             vid += 1
 
         # should check that there are some vorts and do nothing if not
-        self.xvortbuff = np.asarray(xtemp, self.vortdtype)
+        self.vortbuff = np.asarray(xtemp, self.vortdtype)
 
         #####################
         # Make action buffer#
@@ -143,15 +142,13 @@ class Turbulence(BasePlugin):
             ptsr = np.moveaxis(ptsr, 0, -1)
             inside = bbox.pts_in_region(ptsr)
 
-            ttlut = defaultdict(list)
-            xttlut = defaultdict()
-            vidx = defaultdict()
-            vtim = defaultdict()
+            stream = defaultdict(list)
+            sstream = defaultdict()
 
             if np.any(inside):
                 eids = np.any(inside, axis=0).nonzero()[0] # eles in injection box
                 ptsri = ptsr[:,eids,:] # points in injection box
-                for vid, vort in enumerate(self.xvortbuff):
+                for vid, vort in enumerate(self.vortbuff):
                     vbox = BoxRegion([xmin-ls, vort['loci'][0]-ls, vort['loci'][1]-ls],
                                      [xmax+ls, vort['loci'][0]+ls, vort['loci'][1]+ls])
                     elestemp = []               
@@ -160,22 +157,19 @@ class Turbulence(BasePlugin):
                     if np.any(vinside):
                         elestemp = np.any(vinside, axis=0).nonzero()[0].tolist() # injection box local indexing
                         
-                    for eid in elestemp:
-                        exmin = ptsri[:,eid,0].min()
-                        exmax = ptsri[:,eid,0].max()
+                    for leid in elestemp:
+                        exmin = ptsri[:,leid,0].min()
+                        exmax = ptsri[:,leid,0].max()
                         ts = max(vort['ti'], vort['ti'] + ((exmin - xmin - ls)/ubar))
                         te = ts + (exmax-exmin+2*ls)/ubar
-                        ttlut[eids[eid]].append((vid,ts,te))
+                        stream[eids[leid]].append((vid,ts,te))
 
-                for k, v in ttlut.items():
-                    v.sort(key=lambda x: x[1])
-                    xttlut[k] = np.asarray(v, self.xttlutdtype)
-                    nv = np.array(v)
-                    vidx[k] = nv[:,0].astype(int)
-                    vtim[k] = nv[:,-2:]
+                for k, v in stream.items():
+                    v.sort(key=lambda x: x[1]) 
+                    sstream[k] = np.asarray(v, self.sstreamdtype)
 
                 nvmx = 0
-                for leid, actl in xttlut.items():
+                for leid, actl in sstream.items():
                     for i, te in enumerate(actl['te']):
                         shft = next((j for j,v in enumerate(actl['ts']) if v > te+btol),len(actl)-1) - i + 1
                         if shft > nvmx:
@@ -183,7 +177,9 @@ class Turbulence(BasePlugin):
 
                 buff = np.zeros((nvmx, neles), self.buffdtype)
 
-                actbuff = {'trcl': 0.0, 'xttlut': xttlut, 'nvmx': nvmx, 'buff': buff, 'acteddy': eles._be.matrix((nvmx, nparams, neles), tags={'align'}), 'stateeddy': eles._be.matrix((nvmx, 2, neles), tags={'align'}, dtype=np.uint64)}
+                actbuff = {'trcl': 0.0, 'sstream': sstream, 'nvmx': nvmx, 'buff': buff,
+                           'acteddy': eles._be.matrix((nvmx, 1, neles), tags={'align'}),
+                           'stateeddy': eles._be.matrix((nvmx, 1, neles), tags={'align'}, dtype=np.uint64)}
 
                 eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
                 {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac,
@@ -192,16 +188,12 @@ class Turbulence(BasePlugin):
                 })
 
                 eles._set_external('acteddy',
-                                   f'in broadcast-col fpdtype_t[{nvmx}][{nparams}]',
+                                   f'in broadcast-col fpdtype_t[{nvmx}][1]',
                                    value=actbuff['acteddy'])
                                    
                 eles._set_external('stateeddy',
-                                   f'in broadcast-col uint64_t[{nvmx}][2]',
+                                   f'in broadcast-col uint64_t[{nvmx}][1]',
                                    value=actbuff['stateeddy'])
-                                   
-                #eles._set_external('stateeddy',
-                #                   f'in broadcast-row uint64_t[{nvmx}]',
-                #                   value=actbuff['stateeddy'])
 
                 self.actbuffs.append(actbuff)
 
@@ -215,25 +207,26 @@ class Turbulence(BasePlugin):
             t = time.time()
             for abid, actbuff in enumerate(self.actbuffs):    
                 if actbuff['trcl'] <= self.tnext:
-                    #print("hello")
                     trcl = np.inf
-                    for geid, xttluts in actbuff['xttlut'].items():
-                        if xttluts['vid'].any():
-                            #geid = actbuff['geid'][leid]
-                            shft = next((i for i,v in enumerate(actbuff['buff'][:,geid]['te']) if v > tcurr),actbuff['nvmx'])
+                    for geid, sstreams in actbuff['sstream'].items():
+                        if sstreams['vid'].any():
+                            shft = next((i for i,v in enumerate(actbuff['sstream'][geid]['te']) if v > tcurr),actbuff['nvmx'])
                             if shft:
+                                lastts = actbuff['sstream'][geid]['ts'][shft] # check +-1 error
                                 newb = np.zeros(shft, self.buffdtype)
-                                xxxx = self.xvortbuff[xttluts['vid'][:shft]]
-                                pad = shft-xxxx.shape[0]
-                                newb[['loci', 'ti', 'eps', 'state']] = np.pad(xxxx, (0,pad), 'constant')
-                                newb[['ts', 'te']] = np.pad(xttluts[['ts', 'te']][:shft], (0,pad), 'constant')
+                                temp = self.vortbuff[sstreams['vid'][:shft]]
+                                pad = shft-temp.shape[0]
+                                newb[['ti', 'state']] = np.pad(temp, (0,pad), 'constant')
                                 self.actbuffs[abid]['buff'][:,geid] = np.concatenate((actbuff['buff'][shft:,geid],newb))
-                                self.actbuffs[abid]['xttlut'][geid] = xttluts[shft:]
-                                if self.actbuffs[abid]['xttlut'][geid]['vid'].any() and (self.actbuffs[abid]['buff'][-1,geid]['ts'] < trcl):
-                                    trcl = self.actbuffs[abid]['buff']['ts'][-1,geid]
+                                self.actbuffs[abid]['sstream'][geid] = sstreams[shft:]
+                                
+                                if self.actbuffs[abid]['sstream'][geid]['vid'].any() and lastts < trcl:
+                                    trcl = lastts
+                    
                     self.actbuffs[abid]['trcl'] = trcl
-                    self.actbuffs[abid]['acteddy'].set(np.moveaxis(structured_to_unstructured(actbuff['buff']), 2, 1))
-                    #print(np.repeat(actbuff['buff']['state'][:, np.newaxis, :], 2, axis=1).shape)
-                    self.actbuffs[abid]['stateeddy'].set(np.repeat(actbuff['buff']['state'][:, np.newaxis, :], 2, axis=1))
+                    
+                    self.actbuffs[abid]['acteddy'].set(actbuff['buff']['ti'][:, np.newaxis, :])
+                    self.actbuffs[abid]['stateeddy'].set(actbuff['buff']['state'][:, np.newaxis, :])
+                    
             self.tnext = min(etype['trcl'] for etype in self.actbuffs)
             print(time.time()-t)
