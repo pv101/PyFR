@@ -119,7 +119,8 @@ class MatrixBase:
 
 
 class Matrix(MatrixBase):
-    def __init__(self, backend, ioshape, initval, extent, aliases, tags, dtype):
+    def __init__(self, backend, ioshape, initval, extent, aliases, tags, dtype=None):
+        dtype = dtype or backend.fpdtype
         super().__init__(backend, dtype, ioshape, initval, extent,
                          aliases, tags)
 

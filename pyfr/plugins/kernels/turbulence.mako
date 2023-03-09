@@ -33,8 +33,8 @@
   fpdtype_t fac = -0.5*invsigma2*invls2;
   fpdtype_t fac2 = invsigma3*gc3;
   
-  //fpdtype_t tinit[${nvmax}];
-  //uint64_t state[${nvmax}];
+  //fpdtype_t ltinit[${nvmax}];
+  //uint64_t lstate[${nvmax}];
   uint32_t xorshifted;
   uint64_t oldstate;
   uint64_t newstate;
@@ -43,8 +43,8 @@
   int epscomp;
   
   % for i in range(nvmax):
-    //tinit[${i}] = acteddy[${i}][2];
-    //state[${i}] = stateeddy[${i}][0];
+    //ltinit[${i}] = tinit[${i}][0];
+    //lstate[${i}] = state[${i}][0];
   % endfor
   
   % for i, r in enumerate(rot):
@@ -54,9 +54,9 @@
   int i;
   for (int i = 0; i < ${nvmax}; i++)
   {
-      pos[0] = xmin + (t-acteddy[i][2])*ubar;
+      pos[0] = xmin + (t-tinit[i][0])*ubar;
       
-      oldstate = stateeddy[i][0];
+      oldstate = state[i][0];
       newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
       xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
       rot = oldstate >> 59u;

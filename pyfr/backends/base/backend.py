@@ -126,8 +126,7 @@ class BaseBackend:
     @recordmat
     def matrix(self, ioshape, initval=None, extent=None, aliases=None,
                tags=set(), dtype=None):
-        dtype = dtype or self.fpdtype
-        print(dtype)           
+        dtype = dtype or self.fpdtype           
         return self.matrix_cls(self, ioshape, initval, extent, aliases, tags, dtype)
 
     @recordmat
