@@ -134,7 +134,6 @@ class Turbulence(BasePlugin):
         self.actbuffs = []
 
         for etype, eles in intg.system.ele_map.items():
-
             neles = eles.neles
             pts = eles.ploc_at_np('upts')
             pts = np.moveaxis(pts, 1, 0)
@@ -196,12 +195,11 @@ class Turbulence(BasePlugin):
                                    value=actbuff['state'])
 
                 self.actbuffs.append(actbuff)
+                print(f'Rank = {rank}, etype = {etype}, nvorts = {nvorts}, nvmx = {nvmx}.')
 
         if not bool(self.actbuffs):
            self.tnext = math.inf
-        else:
-           print(f'Rank = {rank}, etype = {etype}, nvorts = {nvorts}, nvmx = {nvmx}.')
-                     
+                  
     def __call__(self, intg):
         
         tcurr = intg.tcurr
