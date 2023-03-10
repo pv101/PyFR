@@ -104,7 +104,7 @@ class Turbulence(BasePlugin):
 
         seed = self.cfg.getint(cfgsect, 'seed')
         pcg32rng = pcg32(seed)
-
+        
         ######################
         # Make vortex buffer #
         ######################
@@ -112,19 +112,26 @@ class Turbulence(BasePlugin):
         vid = 0
         temp = []
         xtemp = []
+        
+        tinits = []
 
-        while vid <= nvorts:
-            tinit = self.tstart + (xmax-xmin)*pcg32rng.random()/ubar
-            while tinit < self.tend:
+        while vid < nvorts:
+            tinits.append(self.tstart + (xmax-xmin)*pcg32rng.random()/ubar)
+            vid += 1
+                 
+        while True:     
+            for vid, tinit in enumerate(tinits):
                 state = pcg32rng.getstate()
                 yinit = ymin + (ymax-ymin)*pcg32rng.random()
                 zinit = zmin + (zmax-zmin)*pcg32rng.random()
                 eps = 1.0*pcg32rng.randint(0,8)
-                if tinit+((xmax-xmin)/ubar) >= self.tbegin:
+                if tinit+((xmax-xmin)/ubar) >= self.tbegin and tinit <= self.tend:
                     xtemp.append(((yinit,zinit),tinit,state))
-                tinit += (xmax-xmin)/ubar
-            vid += 1
-
+                tinits[vid] += (xmax-xmin)/ubar
+            if all(tinit > self.tend for tinit in tinits):
+                break
+        
+        #print(xtemp)
         self.vortbuff = np.asarray(xtemp, self.vortdtype)
 
         #####################
@@ -172,6 +179,7 @@ class Turbulence(BasePlugin):
                     for i, te in enumerate(actl['te']):
                         shft = next((j for j,v in enumerate(actl['ts']) if v > te+btol),len(actl)-1) - i + 1
                         if shft > nvmx:
+                            print(shft)
                             nvmx = shft
 
                 buff = np.zeros((nvmx, neles), self.buffdtype)
