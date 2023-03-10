@@ -180,8 +180,20 @@ class Turbulence(BasePlugin):
                     for i, te in enumerate(actl['te']):
                         shft = next((j for j,v in enumerate(actl['ts']) if v > te+btol),len(actl)-1) - i + 1
                         if shft > nvmx:
-                            print(shft)
+                            #print(shft)
                             nvmx = shft
+                            
+                nvmxplus = 0
+                for leid, actl in sstream.items():
+                    for i, ts in enumerate(actl['ts']):
+                        cnt = 0
+                        while i-cnt >= 0:
+                            if actl['te'][i-cnt] < ts:
+                                break
+                            cnt += 1
+                        if cnt > nvmxplus:
+                            print(cnt)
+                            nvmxplus = cnt
 
                 buff = np.zeros((nvmx, neles), self.buffdtype)
 
