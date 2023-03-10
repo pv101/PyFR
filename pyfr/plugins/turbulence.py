@@ -157,15 +157,16 @@ class Turbulence(BasePlugin):
                 for vid, vort in enumerate(self.vortbuff):
                     vbox = BoxRegion([xmin-ls, vort['loci'][0]-ls, vort['loci'][1]-ls],
                                      [xmax+ls, vort['loci'][0]+ls, vort['loci'][1]+ls])
-                    elestemp = []               
+                    elestemp = [] 
+           
                     vinside = vbox.pts_in_region(ptsri)
 
                     if np.any(vinside):
-                        elestemp = np.any(vinside, axis=0).nonzero()[0].tolist() # injection box local indexing
-                        
+                        elestemp = np.any(vinside, axis=0).nonzero()[0].tolist()
+    
                     for leid in elestemp:
-                        exmin = ptsri[:,leid,0].min()
-                        exmax = ptsri[:,leid,0].max()
+                        exmin = ptsri[vinside[:,leid],leid,0].min()
+                        exmax = ptsri[vinside[:,leid],leid,0].max()
                         ts = max(vort['tinit'], vort['tinit'] + ((exmin - xmin - ls)/ubar))
                         te = ts + (exmax-exmin+2*ls)/ubar
                         stream[eids[leid]].append((vid,ts,te))
