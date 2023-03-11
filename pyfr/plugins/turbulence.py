@@ -175,15 +175,15 @@ class Turbulence(BasePlugin):
                     v.sort(key=lambda x: x[1]) 
                     sstream[k] = np.asarray(v, self.sstreamdtype)
 
-                nvmx = 0
-                for leid, actl in sstream.items():
-                    for i, te in enumerate(actl['te']):
-                        shft = next((j for j,v in enumerate(actl['ts']) if v > te+btol),len(actl)-1) - i + 1
-                        if shft > nvmx:
+                #nvmx = 0
+                #for leid, actl in sstream.items():
+                #    for i, te in enumerate(actl['te']):
+                #       shft = next((j for j,v in enumerate(actl['ts']) if v > te+btol),len(actl)-1) - i + 1
+                #        if shft > nvmx:
                             #print(shft)
-                            nvmx = shft
+                #            nvmx = shft
                             
-                nvmxplus = 0
+                nvmx = 0
                 for leid, actl in sstream.items():
                     for i, ts in enumerate(actl['ts']):
                         cnt = 0
@@ -191,10 +191,11 @@ class Turbulence(BasePlugin):
                             if actl['te'][i-cnt] < ts:
                                 break
                             cnt += 1
-                        if cnt > nvmxplus:
+                        if cnt > nvmx:
                             print(cnt)
-                            nvmxplus = cnt
-
+                            nvmx = cnt
+                nvmx += 1 
+                self.nvmx = nvmx
                 buff = np.zeros((nvmx, neles), self.buffdtype)
 
                 actbuff = {'trcl': 0.0, 'sstream': sstream, 'nvmx': nvmx, 'buff': buff,
@@ -230,19 +231,25 @@ class Turbulence(BasePlugin):
                     trcl = np.inf
                     for geid, sstream in actbuff['sstream'].items():
                         if sstream['vid'].any():
-                            shft = next((i for i,v in enumerate(actbuff['buff'][:,geid]['te']) if v > tcurr),actbuff['nvmx'])
+                            tmp = actbuff['buff'][:,geid][actbuff['buff'][:,geid]['te'] > tcurr]        
+                            shft = self.nvmx-len(tmp)
+                            print(shft)    
                             if shft:
                                 newb = np.zeros(shft, self.buffdtype)
                                 temp = self.vortbuff[['tinit', 'state']][sstream['vid'][:shft]]
                                 pad = shft-temp.shape[0]
                                 newb[['tinit', 'state']] = np.pad(temp, (0,pad), 'constant')
                                 newb[['ts', 'te']] = np.pad(sstream[['ts', 'te']][:shft], (0,pad), 'constant')
-                                self.actbuffs[abid]['buff'][:,geid] = np.concatenate((actbuff['buff'][shft:,geid],newb))
+                                self.actbuffs[abid]['buff'][:,geid] = np.concatenate((tmp,newb))
                                 self.actbuffs[abid]['sstream'][geid] = sstream[shft:]
+                            else:
+                                print(tmp['te'])
+                                print(tmp['ts'])
+                                print(sstream['ts'])
                                 
-                                if self.actbuffs[abid]['sstream'][geid]['vid'].any() and (self.actbuffs[abid]['buff'][-1,geid]['ts'] < trcl):
-                                    trcl = self.actbuffs[abid]['buff'][-1,geid]['ts']
-                    
+                            if self.actbuffs[abid]['sstream'][geid]['vid'].any() and (self.actbuffs[abid]['buff'][-1,geid]['ts'] < trcl):
+                                trcl = self.actbuffs[abid]['buff'][-1,geid]['ts']
+
                     self.actbuffs[abid]['trcl'] = trcl
                     self.actbuffs[abid]['tinit'].set(actbuff['buff']['tinit'][:, np.newaxis, :])
                     self.actbuffs[abid]['state'].set(actbuff['buff']['state'][:, np.newaxis, :])
