@@ -232,8 +232,7 @@ class Turbulence(BasePlugin):
                     for geid, sstream in actbuff['sstream'].items():
                         if sstream['vid'].any():
                             tmp = actbuff['buff'][:,geid][actbuff['buff'][:,geid]['te'] > tcurr]        
-                            shft = self.nvmx-len(tmp)
-                            print(shft)    
+                            shft = self.nvmx-len(tmp)   
                             if shft:
                                 newb = np.zeros(shft, self.buffdtype)
                                 temp = self.vortbuff[['tinit', 'state']][sstream['vid'][:shft]]
@@ -242,10 +241,6 @@ class Turbulence(BasePlugin):
                                 newb[['ts', 'te']] = np.pad(sstream[['ts', 'te']][:shft], (0,pad), 'constant')
                                 self.actbuffs[abid]['buff'][:,geid] = np.concatenate((tmp,newb))
                                 self.actbuffs[abid]['sstream'][geid] = sstream[shft:]
-                            else:
-                                print(tmp['te'])
-                                print(tmp['ts'])
-                                print(sstream['ts'])
                                 
                             if self.actbuffs[abid]['sstream'][geid]['vid'].any() and (self.actbuffs[abid]['buff'][-1,geid]['ts'] < trcl):
                                 trcl = self.actbuffs[abid]['buff'][-1,geid]['ts']
