@@ -194,8 +194,7 @@ class Turbulence(BasePlugin):
                         if cnt > nvmx:
                             print(cnt)
                             nvmx = cnt
-                nvmx += 1 
-                self.nvmx = nvmx
+                nvmx += 1
                 buff = np.zeros((nvmx, neles), self.buffdtype)
 
                 actbuff = {'trcl': 0.0, 'sstream': sstream, 'nvmx': nvmx, 'buff': buff,
@@ -232,7 +231,7 @@ class Turbulence(BasePlugin):
                     for geid, sstream in actbuff['sstream'].items():
                         if sstream['vid'].any():
                             tmp = actbuff['buff'][:,geid][actbuff['buff'][:,geid]['te'] > tcurr]        
-                            shft = self.nvmx-len(tmp)   
+                            shft = actbuff['nvmx']-len(tmp)   
                             if shft:
                                 newb = np.zeros(shft, self.buffdtype)
                                 temp = self.vortbuff[['tinit', 'state']][sstream['vid'][:shft]]
