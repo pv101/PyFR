@@ -121,7 +121,7 @@ class Turbulence(BasePlugin):
                  
         while True:     
             for vid, tinit in enumerate(tinits):
-                print(vid)
+                #print(vid)
                 state = pcg32rng.getstate()
                 yinit = ymin + (ymax-ymin)*pcg32rng.random()
                 zinit = zmin + (zmax-zmin)*pcg32rng.random()
@@ -132,7 +132,7 @@ class Turbulence(BasePlugin):
             if all(tinit > self.tend for tinit in tinits):
                 break
         
-        print(len(xtemp))
+        #print(len(xtemp))
         self.vortbuff = np.asarray(xtemp, self.vortdtype)
 
         #####################
@@ -156,7 +156,7 @@ class Turbulence(BasePlugin):
                 eids = np.any(inside, axis=0).nonzero()[0] # eles in injection box
                 ptsri = ptsr[:,eids,:] # points in injection box
                 for vid, vort in enumerate(self.vortbuff):
-                    print(vid)
+                    #print(vid)
                     vbox = BoxRegion([xmin-ls, vort['loci'][0]-ls, vort['loci'][1]-ls],
                                      [xmax+ls, vort['loci'][0]+ls, vort['loci'][1]+ls])
                     elestemp = [] 
@@ -194,7 +194,7 @@ class Turbulence(BasePlugin):
                                 break
                             cnt += 1
                         if cnt > nvmx:
-                            print(cnt)
+                            #print(cnt)
                             nvmx = cnt
                 nvmx += 1
                 buff = np.zeros((nvmx, neles), self.buffdtype)
@@ -242,6 +242,10 @@ class Turbulence(BasePlugin):
                                 newb[['ts', 'te']] = np.pad(sstream[['ts', 'te']][:shft], (0,pad), 'constant')
                                 self.actbuffs[abid]['buff'][:,geid] = np.concatenate((tmp,newb))
                                 self.actbuffs[abid]['sstream'][geid] = sstream[shft:]
+                            else:
+                                tstemp = sstream['ts'][0]
+                                if tcurr >= tstemp:
+                                    print(f'DANGER: cannot move anything off of buffer for element {geid} at time {tcurr}. ts for the pending buffer item is {tstemp}')
                                 
                             if self.actbuffs[abid]['sstream'][geid]['vid'].any() and (self.actbuffs[abid]['buff'][-1,geid]['ts'] < trcl):
                                 trcl = self.actbuffs[abid]['buff'][-1,geid]['ts']
@@ -249,6 +253,13 @@ class Turbulence(BasePlugin):
                     self.actbuffs[abid]['trcl'] = trcl
                     self.actbuffs[abid]['tinit'].set(actbuff['buff']['tinit'][:, np.newaxis, :])
                     self.actbuffs[abid]['state'].set(actbuff['buff']['state'][:, np.newaxis, :])
-                    
-            self.tnext = min(etype['trcl'] for etype in self.actbuffs)
+            
+            proptnext = min(etype['trcl'] for etype in self.actbuffs)
+            if proptnext > self.tnext:
+                self.tnext = proptnext
+            else:
+                print('DANGER not advancing')
+                   
+            #self.tnext = min(etype['trcl'] for etype in self.actbuffs)
+            print(self.tnext)
 
