@@ -55,43 +55,45 @@
   for (int i = 0; i < ${nvmax}; i++)
   {
       pos[0] = xmin + (t-tinit[i][0])*ubar;
-      
-      oldstate = state[i][0];
-      newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
-      xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-      rot = oldstate >> 59u;
-      out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-      pos[1] = ymin + (ymax-ymin)*ldexp((double)out, -32);
+      if (pos[0] <= xmax)
+      {
+          oldstate = state[i][0];
+          newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+          xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+          rot = oldstate >> 59u;
+          out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+          pos[1] = ymin + (ymax-ymin)*ldexp((double)out, -32);
 
-      oldstate = newstate;
-      newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
-      xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-      rot = oldstate >> 59u;
-      out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-      pos[2] = zmin + (zmax-zmin)*ldexp((double)out, -32);
- 
-      oldstate = newstate;
-      newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
-      xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-      rot = oldstate >> 59u;
-      out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-      epscomp = out % 8;
+          oldstate = newstate;
+          newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+          xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+          rot = oldstate >> 59u;
+          out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+          pos[2] = zmin + (zmax-zmin)*ldexp((double)out, -32);
+     
+          oldstate = newstate;
+          newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+          xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+          rot = oldstate >> 59u;
+          out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+          epscomp = out % 8;
 
-      arg = 0.0;
-      % for j in range(ndims):
-        delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);
-        arg += fac*delta2[${j}];
-      % endfor
+          arg = 0.0;
+          % for j in range(ndims):
+            delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);
+            arg += fac*delta2[${j}];
+          % endfor
 
-      g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? fac2*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
-      
-      eps[0] = (epscomp & 1) ? -1 : 1;
-      eps[1] = (epscomp & 2) ? -1 : 1;
-      eps[2] = (epscomp & 4) ? -1 : 1;
-         
-      % for j in range(ndims): 
-        utilde[${j}] += eps[${j}]*g;
-      % endfor
+          g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? fac2*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
+          
+          eps[0] = (epscomp & 1) ? -1 : 1;
+          eps[1] = (epscomp & 2) ? -1 : 1;
+          eps[2] = (epscomp & 4) ? -1 : 1;
+             
+          % for j in range(ndims): 
+            utilde[${j}] += eps[${j}]*g;
+          % endfor
+      }
   }
   
   % for i in range(ndims): 

@@ -121,6 +121,7 @@ class Turbulence(BasePlugin):
                  
         while True:     
             for vid, tinit in enumerate(tinits):
+                print(vid)
                 state = pcg32rng.getstate()
                 yinit = ymin + (ymax-ymin)*pcg32rng.random()
                 zinit = zmin + (zmax-zmin)*pcg32rng.random()
@@ -131,7 +132,7 @@ class Turbulence(BasePlugin):
             if all(tinit > self.tend for tinit in tinits):
                 break
         
-        #print(xtemp)
+        print(len(xtemp))
         self.vortbuff = np.asarray(xtemp, self.vortdtype)
 
         #####################
@@ -155,6 +156,7 @@ class Turbulence(BasePlugin):
                 eids = np.any(inside, axis=0).nonzero()[0] # eles in injection box
                 ptsri = ptsr[:,eids,:] # points in injection box
                 for vid, vort in enumerate(self.vortbuff):
+                    print(vid)
                     vbox = BoxRegion([xmin-ls, vort['loci'][0]-ls, vort['loci'][1]-ls],
                                      [xmax+ls, vort['loci'][0]+ls, vort['loci'][1]+ls])
                     elestemp = [] 
@@ -168,7 +170,7 @@ class Turbulence(BasePlugin):
                         exmin = ptsri[vinside[:,leid],leid,0].min()
                         exmax = ptsri[vinside[:,leid],leid,0].max()
                         ts = max(vort['tinit'], vort['tinit'] + ((exmin - xmin - ls)/ubar))
-                        te = ts + (exmax-exmin+2*ls)/ubar
+                        te = max(ts,min(ts + (exmax-exmin+2*ls)/ubar,vort['tinit']+((xmax-xmin)/ubar)))
                         stream[eids[leid]].append((vid,ts,te))
 
                 for k, v in stream.items():
