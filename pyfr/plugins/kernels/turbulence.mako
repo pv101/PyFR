@@ -55,9 +55,11 @@
   for (int i = 0; i < ${nvmax}; i++)
   {
       pos[0] = xmin + (t-tinit[i][0])*ubar;
+      //pos[0] = xmin + (t-ltinit[i])*ubar;
       if (pos[0] <= xmax)
       {
           oldstate = state[i][0];
+          //oldstate = lstate[i];
           newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
           xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
           rot = oldstate >> 59u;

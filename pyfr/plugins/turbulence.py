@@ -121,7 +121,7 @@ class Turbulence(BasePlugin):
                  
         while True:     
             for vid, tinit in enumerate(tinits):
-                #print(vid)
+                print(vid)
                 state = pcg32rng.getstate()
                 yinit = ymin + (ymax-ymin)*pcg32rng.random()
                 zinit = zmin + (zmax-zmin)*pcg32rng.random()
@@ -132,7 +132,7 @@ class Turbulence(BasePlugin):
             if all(tinit > self.tend for tinit in tinits):
                 break
         
-        #print(len(xtemp))
+        print(len(xtemp))
         self.vortbuff = np.asarray(xtemp, self.vortdtype)
 
         #####################
