@@ -37,6 +37,32 @@ class pcg32:
     def choice(self, seq):
         return seq[self.randint(0, len(seq))]
         
+class pcg32rxs_m_xs:
+    def __init__(self, seed):
+        self.state = np.uint32(seed)
+        self.multiplier = np.uint32(747796405)
+        self.mcgmultiplier = np.uint32(277803737)
+        self.increment = np.uint32(2891336453)
+        self.opbits = np.uint8(4)
+        self.b22 = np.uint8(22)
+        self.b32 = np.uint8(32)
+    def rand(self):
+        oldstate = self.state
+        self.state = (oldstate * self.multiplier) + self.increment
+        rshift = np.uint8(oldstate >> (self.b32 - self.opbits))
+        oldstate ^= oldstate >> (self.opbits + rshift)
+        oldstate *= self.mcgmultiplier
+        oldstate ^= oldstate >> self.b22
+        return oldstate
+    def random(self):
+        return np.ldexp(self.rand(),-32)
+    def getstate(self):
+        return self.state
+    def randint(self, a, b):
+        return a + self.rand() % (b - a)
+    def choice(self, seq):
+        return seq[self.randint(0, len(seq))]
+        
 class Turbulence(BasePlugin):
     name = 'turbulence'
     systems = ['navier-stokes']
@@ -45,6 +71,16 @@ class Turbulence(BasePlugin):
     def __init__(self, intg, cfgsect, suffix):
         super().__init__(intg, cfgsect, suffix)
         
+        #print('PCG testing')
+        #pcg3232 = pcg32rxs_m_xs(2891336495)
+        
+        #cc = 0
+        #while cc < 30:
+        #    print(pcg3232.getstate())
+        #    print("  ")
+        #    print(pcg3232.rand())
+        #    cc += 1
+  
         self.tstart = intg.tstart
         self.tbegin = intg.tcurr
         self.tnext = intg.tcurr
@@ -54,9 +90,9 @@ class Turbulence(BasePlugin):
 
         fdptype = intg.backend.fpdtype
 
-        self.vortdtype = np.dtype([('loci', fdptype, 2), ('tinit', fdptype), ('state', np.uint64)])
+        self.vortdtype = np.dtype([('loci', fdptype, 2), ('tinit', fdptype), ('state', np.uint32)])
         self.sstreamdtype = np.dtype([('vid', '<i4'), ('ts', fdptype), ('te', fdptype)])
-        self.buffdtype = np.dtype([('tinit', fdptype), ('state', np.uint64), ('ts', fdptype), ('te', fdptype)])
+        self.buffdtype = np.dtype([('tinit', fdptype), ('state', np.uint32), ('ts', fdptype), ('te', fdptype)])
         
         btol = 0.01
 
@@ -103,7 +139,7 @@ class Turbulence(BasePlugin):
             self.dtol = intg._dt
 
         seed = self.cfg.getint(cfgsect, 'seed')
-        pcg32rng = pcg32(seed)
+        pcg32rng = pcg32rxs_m_xs(seed)
         
         ######################
         # Make vortex buffer #
@@ -121,18 +157,19 @@ class Turbulence(BasePlugin):
                  
         while True:     
             for vid, tinit in enumerate(tinits):
-                print(vid)
+                #print(vid)
                 state = pcg32rng.getstate()
                 yinit = ymin + (ymax-ymin)*pcg32rng.random()
                 zinit = zmin + (zmax-zmin)*pcg32rng.random()
                 eps = 1.0*pcg32rng.randint(0,8)
                 if tinit+((xmax-xmin)/ubar) >= self.tbegin and tinit <= self.tend:
                     xtemp.append(((yinit,zinit),tinit,state))
+                    #print(f'pos1 = {yinit}, pos2 = {zinit}, epscomp = {eps}')
                 tinits[vid] += (xmax-xmin)/ubar
             if all(tinit > self.tend for tinit in tinits):
                 break
         
-        print(len(xtemp))
+        #print(len(xtemp))
         self.vortbuff = np.asarray(xtemp, self.vortdtype)
 
         #####################
@@ -201,7 +238,7 @@ class Turbulence(BasePlugin):
 
                 actbuff = {'trcl': 0.0, 'sstream': sstream, 'nvmx': nvmx, 'buff': buff,
                            'tinit': eles._be.matrix((nvmx, 1, neles), tags={'align'}),
-                           'state': eles._be.matrix((nvmx, 1, neles), tags={'align'}, dtype=np.uint64)}
+                           'state': eles._be.matrix((nvmx, 1, neles), tags={'align'}, dtype=np.uint32)}
 
                 eles.add_src_macro('pyfr.plugins.kernels.turbulence','turbulence',
                 {'nvmax': nvmx, 'ls': ls, 'ubar': ubar, 'srafac': srafac,
@@ -214,7 +251,7 @@ class Turbulence(BasePlugin):
                                    value=actbuff['tinit'])
                                    
                 eles._set_external('state',
-                                   f'in broadcast-col uint64_t[{nvmx}][1]',
+                                   f'in broadcast-col uint32_t[{nvmx}][1]',
                                    value=actbuff['state'])
 
                 self.actbuffs.append(actbuff)

@@ -34,12 +34,15 @@
   fpdtype_t fac2 = invsigma3*gc3;
   
   //fpdtype_t ltinit[${nvmax}];
-  //uint64_t lstate[${nvmax}];
-  uint32_t xorshifted;
-  uint64_t oldstate;
-  uint64_t newstate;
-  uint32_t rot;
-  uint32_t out;
+  //uint32_t lstate[${nvmax}];
+  
+  uint32_t oldstate;
+  uint32_t newstate;
+  uint8_t rshift;
+  uint8_t b22 = 22;
+  uint8_t b32 = 32;
+  uint8_t opbits = 4;
+
   int epscomp;
   
   % for i in range(nvmax):
@@ -60,25 +63,54 @@
       {
           oldstate = state[i][0];
           //oldstate = lstate[i];
-          newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
-          xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-          rot = oldstate >> 59u;
-          out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-          pos[1] = ymin + (ymax-ymin)*ldexp((double)out, -32);
+          newstate = (oldstate * 747796405UL) + 2891336453UL;
+          rshift = uint8_t(oldstate >> (b32 - opbits));
+          oldstate ^= oldstate >> (opbits + rshift);
+          oldstate *= 277803737UL;
+          oldstate ^= oldstate >> b22;
+          pos[1] = ymin + (ymax-ymin)*ldexp((double)oldstate, -32);
+          
+          oldstate = newstate;
+          newstate = (oldstate * 747796405UL) + 2891336453UL;
+          rshift = uint8_t(oldstate >> (b32 - opbits));
+          oldstate ^= oldstate >> (opbits + rshift);
+          oldstate *= 277803737UL;
+          oldstate ^= oldstate >> b22;
+          pos[2] = ymin + (ymax-ymin)*ldexp((double)oldstate, -32);
+          
+          oldstate = newstate;
+          newstate = (oldstate * 747796405UL) + 2891336453UL;
+          rshift = uint8_t(oldstate >> (b32 - opbits));
+          oldstate ^= oldstate >> (opbits + rshift);
+          oldstate *= 277803737UL;
+          oldstate ^= oldstate >> b22;
+          epscomp = oldstate % 8;
+          
+          //if (pos[1] > 0)
+          //{
+          //   printf("pos1 = %.16lf pos2 = %.16lf epscomp = %d\n", pos[1], pos[2], epscomp);
+          //}
 
-          oldstate = newstate;
-          newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
-          xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-          rot = oldstate >> 59u;
-          out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-          pos[2] = zmin + (zmax-zmin)*ldexp((double)out, -32);
+          
+          //newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+          //xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+          //rot = oldstate >> 59u;
+          //out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+          //pos[1] = ymin + (ymax-ymin)*ldexp((double)out, -32);
+
+          //oldstate = newstate;
+          //newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+          //xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+          //rot = oldstate >> 59u;
+          //out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+          //pos[2] = zmin + (zmax-zmin)*ldexp((double)out, -32);
      
-          oldstate = newstate;
-          newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
-          xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-          rot = oldstate >> 59u;
-          out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-          epscomp = out % 8;
+          //oldstate = newstate;
+          //newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
+          //xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+          //rot = oldstate >> 59u;
+          //out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+          //epscomp = out % 8;
 
           arg = 0.0;
           % for j in range(ndims):
