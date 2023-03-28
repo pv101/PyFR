@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
-
 from ctypes import POINTER, c_int, c_double, c_float, c_void_p
 
 import numpy as np
 
-from pyfr.backends.base import Kernel
+from pyfr.backends.hip.provider import HIPKernel, HIPKernelProvider
 from pyfr.ctypesutil import LibWrapper
 
 
@@ -47,14 +45,19 @@ class RocBLASWrappers(LibWrapper):
     ]
 
 
-class HIPRocBLASKernels:
+class HIPRocBLASKernels(HIPKernelProvider):
     def __init__(self, backend):
+        super().__init__(backend)
+
         # Load and wrap rocBLAS
         self._wrappers = RocBLASWrappers()
 
         # Init
         self._handle = c_void_p()
         self._wrappers.rocblas_create_handle(self._handle)
+
+        # Timing data cache
+        self._mul_timing = {}
 
     def __del__(self):
         try:
@@ -88,11 +91,33 @@ class HIPRocBLASKernels:
             rocblas_gemm = w.rocblas_sgemm
             alpha_ct, beta_ct = c_float(alpha), c_float(beta)
 
-        class MulKernel(Kernel):
-            def run(self, queue):
-                w.rocblas_set_stream(h, queue.stream)
-                rocblas_gemm(h, opA, opB, m, n, k,
-                             alpha_ct, A, A.leaddim, B, B.leaddim,
-                             beta_ct, C, C.leaddim)
+        # Convenience wrapper
+        def gemm(stream):
+            w.rocblas_set_stream(h, stream)
+            rocblas_gemm(h, opA, opB, m, n, k, alpha_ct, A, A.leaddim, B,
+                         B.leaddim, beta_ct, C, C.leaddim)
 
-        return MulKernel()
+        # Cache key
+        ckey = (A.dtype, alpha, beta, m, n, k, A.leaddim, B.leaddim, C.leaddim)
+
+        # Obtain the performance of the kernel
+        try:
+            dt = self._mul_timing[ckey]
+        except KeyError:
+            # Save a copy of the contents of the output matrix
+            out_np = getattr(out, 'parent', out).get()
+
+            # Benchmark the kernel and update the cache
+            self._mul_timing[ckey] = dt = self._benchmark(gemm)
+
+            # Restore the output matrix
+            getattr(out, 'parent', out).set(out_np)
+
+        class MulKernel(HIPKernel):
+            def add_to_graph(self, graph, deps):
+                pass
+
+            def run(self, stream):
+                gemm(stream)
+
+        return MulKernel(mats=[a, b, out], dt=dt)

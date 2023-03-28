@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from collections import defaultdict
 import itertools as it
 import re
@@ -153,10 +151,6 @@ class DualMultiPIntegrator(BaseDualPseudoIntegrator):
         self.pintg.pseudostepinfo = y
 
     @property
-    def _queue(self):
-        return self.pintg._queue
-
-    @property
     def _regidx(self):
         return self.pintg._regidx
 
@@ -220,11 +214,11 @@ class DualMultiPIntegrator(BaseDualPseudoIntegrator):
         # Restrict the physical source term
         l1src = self.pintgs[l1]._source_regidx
         l2dst = self.pintgs[l2]._source_regidx
-        self.pintg._queue.enqueue_and_run(self.mgproject(l1, l1src, l2, l2dst))
+        self.backend.run_kernels(self.mgproject(l1, l1src, l2, l2dst))
 
         # Project local dtau field to lower multigrid levels
         if self.pintgs[self._order].pseudo_controller_needs_lerrest:
-            self.pintg._queue.enqueue_and_run(self.dtauproject(l1, l2))
+            self.backend.run_kernels(self.dtauproject(l1, l2))
 
         # Prevsoln is used as temporal storage at l1
         rtemp = 0 if l1idxcurr == 1 else 1
@@ -241,9 +235,10 @@ class DualMultiPIntegrator(BaseDualPseudoIntegrator):
         mg0, mg1 = self._mg_regidx
 
         # Restrict Q and d
-        self.pintg._queue.enqueue(self.mgproject(l1, l1idxcurr, l2, l2idxcurr))
-        self.pintg._queue.enqueue(self.mgproject(l1, rtemp, l2, mg1))
-        self.pintg._queue.run()
+        self.backend.run_kernels(
+            self.mgproject(l1, l1idxcurr, l2, l2idxcurr) +
+            self.mgproject(l1, rtemp, l2, mg1)
+        )
 
         # mg0 = R = -∇·f - dQ/dt
         self.pintg._rhs_with_dts(self.tcurr, l2idxcurr, mg0, mg_add=False)
@@ -268,7 +263,7 @@ class DualMultiPIntegrator(BaseDualPseudoIntegrator):
         self.pintg._add(-1, self._mg_regidx[1], 1, l1idxcurr)
 
         # Prolongate the correction and store to rtemp
-        self.pintg._queue.enqueue_and_run(
+        self.backend.run_kernels(
             self.mgproject(l1, self._mg_regidx[1], l2, rtemp)
         )
 

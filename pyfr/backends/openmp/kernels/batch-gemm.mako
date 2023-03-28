@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 <%inherit file='base'/>
 
 struct kargs
@@ -14,7 +13,7 @@ struct kargs
 
 void batch_gemm(const struct kargs *restrict args)
 {
-    #pragma omp parallel for
+    #pragma omp parallel for ${schedule}
     for (int ib = 0; ib < args->nblocks; ib++)
         args->exec(args->blockk,
                    args->b + ib*args->bblocksz,

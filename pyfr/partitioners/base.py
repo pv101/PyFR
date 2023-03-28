@@ -1,24 +1,27 @@
-# -*- coding: utf-8 -*-
-
 from collections import Counter, defaultdict, namedtuple
 import itertools as it
 import re
-import uuid
+from uuid import UUID
 
 import numpy as np
 
 from pyfr.inifile import Inifile
+from pyfr.util import digest
 
 
 Graph = namedtuple('Graph', ['vtab', 'etab', 'vwts', 'ewts'])
 
 
 class BasePartitioner:
-    def __init__(self, partwts, elewts, nsubeles=64, opts={}):
+    def __init__(self, partwts, elewts=None, nsubeles=64, opts={}):
         self.partwts = partwts
         self.elewts = elewts
         self.nparts = len(partwts)
         self.nsubeles = nsubeles
+
+        if elewts is None and not self.has_multiple_constraints:
+            raise ValueError(f'Partitioner {self.name} does not support '
+                             'balanced partitioning')
 
         # Parse the options list
         self.opts = {}
@@ -59,10 +62,17 @@ class BasePartitioner:
 
         # Connectivity
         intcon, mpicon, bccon = [], {}, defaultdict(list)
+        intcon_p, nintcon = defaultdict(list), 0
 
         for f in mesh:
             if (mi := re.match(r'con_p(\d+)$', f)):
                 intcon.append(offset_con(mesh[f], int(mi[1])))
+
+                for k, v in mesh.attrs(f).items():
+                    if k.startswith('periodic_'):
+                        intcon_p[k].append(v + nintcon)
+
+                nintcon += intcon[-1].shape[1]
             elif (mm := re.match(r'con_p(\d+)p(\d+)$', f)):
                 l, r = int(mm[1]), int(mm[2])
                 lcon = offset_con(mesh[f], l)
@@ -86,10 +96,26 @@ class BasePartitioner:
             newmesh[f'spt_{en}_p0'] = np.hstack(spts[en])
             newmesh[f'spt_{en}_p0', 'linear'] = np.hstack(linf[en])
 
+        for k, v in intcon_p.items():
+            newmesh['con_p0', k] = np.hstack(v)
+
         for k, v in bccon.items():
             newmesh[f'bcon_{k}_p0'] = np.hstack(v).astype(dtype)
 
         return newmesh, rnum
+
+    def _get_elewts(self, mesh):
+        # If we have an element weighting table then use it
+        if self.elewts is not None:
+            return self.elewts
+        # Else, use multiple constraints for a balanced partitioning
+        else:
+            etypes = []
+            for f in mesh:
+                if isinstance(f, str) and f.startswith('spt'):
+                    etypes.append(f.split('_')[1])
+
+            return dict(zip(etypes, np.eye(len(etypes), dtype=int)))
 
     def _combine_soln_parts(self, soln, prefix):
         newsoln = defaultdict(list)
@@ -99,7 +125,7 @@ class BasePartitioner:
 
         return {k: np.dstack(v) for k, v in newsoln.items()}
 
-    def _construct_graph(self, con):
+    def _construct_graph(self, con, elewts, exwts={}):
         # Edges of the dual graph
         con = con[['f0', 'f1']]
         con = np.hstack([con, con[::-1]])
@@ -119,20 +145,81 @@ class BasePartitioner:
         vetimap = lhs[vtab[:-1]].tolist()
         etivmap = {k: v for v, k in enumerate(vetimap)}
 
-        # Prepare the list of edges for each vertex
+        # Prepare the edges and their weights
         etab = np.array([etivmap[r] for r in rhs.tolist()])
-
-        # Prepare the list of vertex and edge weights
-        vwts = np.array([self.elewts[t] for t, i in vetimap])
         ewts = np.ones_like(etab)
+
+        # Prepare the vertex weights
+        vwts = np.array([exwts.get(ti, elewts[ti[0]]) for ti in vetimap])
+        vwts = vwts.reshape(len(vwts), -1)
 
         return Graph(vtab, etab, vwts, ewts), vetimap
 
     def _partition_graph(self, graph, partwts):
         pass
 
+    def _group_periodic_eles(self, mesh, elewts):
+        con = mesh['con_p0'][['f0', 'f1']]
+        pmerge, pnames = {}, {}
+
+        # Extract the periodic connectivity from the mesh
+        for f, v in mesh.items():
+            if f[0] == 'con_p0' and f[1].startswith('periodic'):
+                for i, (l, r) in zip(v, con[:, v].T.tolist()):
+                    pnames[i] = f[1]
+                    if l != r:
+                        if l in pmerge and r in pmerge:
+                            pr = pmerge[r]
+                            for ll, rr in pmerge.items():
+                                if rr == pr:
+                                    pmerge[ll] = pmerge[l]
+                            pmerge[pr] = pmerge[l]
+                        elif l in pmerge:
+                            if r != pmerge[l]:
+                                pmerge[r] = pmerge[l]
+                        elif r in pmerge:
+                            if l != pmerge[r]:
+                                pmerge[l] = pmerge[r]
+                        else:
+                            pmerge[l] = r
+
+        if pmerge:
+            # Eliminate periodic connectivity
+            con = np.delete(con, list(pnames), axis=1)
+
+            # Merge the associated elements
+            for i, (l, r) in enumerate(con.T.tolist()):
+                if l in pmerge:
+                    con[0, i] = pmerge[l]
+                if r in pmerge:
+                    con[1, i] = pmerge[r]
+
+        # Tally up the weights for the merged elements
+        exwts = {(t, i): elewts[t] for t, i in set(pmerge.values())}
+        for (lt, li), r in pmerge.items():
+            exwts[r] += elewts[lt]
+
+        return con, exwts, pmerge, pnames
+
+    def _ungroup_periodic_eles(self, pmerge, vetimap, vparts):
+        # Invert the merge dictionary
+        punmerge = defaultdict(list)
+        for l, r in pmerge.items():
+            punmerge[r].append(l)
+
+        # Create new vertices for the unmerged periodic elements
+        vnetimap, vnparts = list(vetimap), list(vparts)
+        for i, j in enumerate(vetimap):
+            if j in punmerge:
+                for k in punmerge[j]:
+                    vnetimap.append(k)
+                    vnparts.append(vparts[i])
+
+        return vnetimap, vnparts
+
     def _renumber_verts(self, mesh, vetimap, vparts):
         pscon = [[] for i in range(self.nparts)]
+        elewts = defaultdict(lambda: 1)
         vpartmap, bndeti = dict(zip(vetimap, vparts)), set()
 
         # Construct per-partition connectivity arrays and tag elements
@@ -146,13 +233,14 @@ class BasePartitioner:
                 bndeti |= {l, r}
 
         # Start by assigning the lowest numbers to these boundary elements
-        nvetimap, nvparts = list(bndeti), [vpartmap[eti] for eti in bndeti]
+        nvetimap = sorted(bndeti)
+        nvparts = [vpartmap[eti] for eti in nvetimap]
 
         # Use sub-partitioning to assign interior element numbers
         for part, scon in enumerate(pscon):
             # Construct a graph for this partition
             scon = np.array(scon, dtype='U4,i4').T
-            sgraph, svetimap = self._construct_graph(scon)
+            sgraph, svetimap = self._construct_graph(scon, elewts)
 
             # Determine the number of sub-partitions
             nsp = len(svetimap) // self.nsubeles + 1
@@ -211,9 +299,10 @@ class BasePartitioner:
         return {f'{prefix}_{etype}_p{pn}': np.dstack(v)
                 for (etype, pn), v in soln_px.items()}
 
-    def _partition_con(self, mesh, vetimap, vparts):
+    def _partition_con(self, mesh, vetimap, vparts, pnames):
         con_px = defaultdict(list)
         con_pxpy = defaultdict(list)
+        con_px_periodic = defaultdict(lambda: defaultdict(list))
         bcon_px = defaultdict(list)
 
         # Global-to-local element index map
@@ -225,7 +314,7 @@ class BasePartitioner:
             pcounter[etype, part] += 1
 
         # Generate the face connectivity
-        for l, r in zip(*mesh['con_p0'].tolist()):
+        for i, (l, r) in enumerate(mesh['con_p0'].T.tolist()):
             letype, leidxg, lfidx, lflags = l
             retype, reidxg, rfidx, rflags = r
 
@@ -236,6 +325,10 @@ class BasePartitioner:
             conr = (retype, reidxl, rfidx, rflags)
 
             if lpart == rpart:
+                # If this face is periodic, then tag it as such
+                if (pname := pnames.get(i, None)):
+                    con_px_periodic[lpart][pname].append(len(con_px[lpart]))
+
                 con_px[lpart].append([conl, conr])
             else:
                 con_pxpy[lpart, rpart].append(conl)
@@ -265,6 +358,10 @@ class BasePartitioner:
         for (etype, px), v in bcon_px.items():
             con[f'bcon_{etype}_p{px}'] = np.array(v, dtype=dtype)
 
+        for px, v in con_px_periodic.items():
+            for name, idxs in v.items():
+                con[f'con_p{px}', name] = np.array(idxs)
+
         return con, eleglmap
 
     def partition(self, mesh):
@@ -274,8 +371,14 @@ class BasePartitioner:
         # Combine any pre-existing partitions
         mesh, rnum = self._combine_mesh_parts(mesh)
 
+        # Obtain the element weighting table
+        elewts = self._get_elewts(mesh)
+
+        # Merge periodic elements
+        con, exwts, pmerge, pnames = self._group_periodic_eles(mesh, elewts)
+
         # Obtain the dual graph for this mesh
-        graph, vetimap = self._construct_graph(mesh['con_p0'])
+        graph, vetimap = self._construct_graph(con, elewts, exwts=exwts)
 
         # Partition the graph
         if self.nparts > 1:
@@ -287,11 +390,14 @@ class BasePartitioner:
         else:
             vparts = [0]*len(vetimap)
 
+        # Unmerge periodic elements
+        vetimap, vparts = self._ungroup_periodic_eles(pmerge, vetimap, vparts)
+
         # Renumber vertices
         vetimap, vparts = self._renumber_verts(mesh, vetimap, vparts)
 
         # Partition the connectivity portion of the mesh
-        newmesh, eleglmap = self._partition_con(mesh, vetimap, vparts)
+        newmesh, eleglmap = self._partition_con(mesh, vetimap, vparts, pnames)
 
         # Handle the shape points
         newmesh |= self._partition_spts(mesh, vetimap, vparts)
@@ -302,7 +408,7 @@ class BasePartitioner:
                 emap[k] = eleglmap[etype, eidx]
 
         # Generate a new UUID for the mesh
-        newmesh['mesh_uuid'] = newuuid = str(uuid.uuid4())
+        newmesh['mesh_uuid'] = newuuid = str(UUID(digest(curruuid, rnum)[:32]))
 
         # Build the solution converter
         def partition_soln(soln):

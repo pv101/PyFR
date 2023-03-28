@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 from argparse import ArgumentParser, FileType
 import itertools as it
 import os
@@ -8,6 +6,7 @@ import os
 import mpi4py.rc
 mpi4py.rc.initialize = False
 
+from pyfr._version import __version__
 from pyfr.backends import BaseBackend, get_backend
 from pyfr.inifile import Inifile
 from pyfr.mpiutil import register_finalize_handler
@@ -28,6 +27,8 @@ def main():
 
     # Common options
     ap.add_argument('--verbose', '-v', action='count')
+    ap.add_argument('--version', '-V', action='version',
+                    version=f'%(prog)s {__version__}')
 
     # Import command
     ap_import = sp.add_parser('import', help='import --help')
@@ -57,7 +58,7 @@ def main():
                               help='output renumbering file')
     ap_partition.add_argument('-e', dest='elewts', action='append',
                               default=[], metavar='shape:weight',
-                              help='element weighting factor')
+                              help='element weighting factor or "balanced"')
     ap_partition.add_argument('--popt', dest='popts', action='append',
                               default=[], metavar='key:value',
                               help='partitioner-specific option')
@@ -72,6 +73,10 @@ def main():
     ap_export.add_argument('-t', dest='type', choices=types, required=False,
                            help='output file type; this is usually inferred '
                            'from the extension of outf')
+    ap_export.add_argument('-f', '--field', dest='fields', action='append',
+                           metavar='FIELD', required=False, help='what fields '
+                           'should be output; may be repeated, by default all '
+                           'fields are output')
     output_options = ap_export.add_mutually_exclusive_group(required=False)
     output_options.add_argument('-d', '--divisor', type=int,
                                 help='sets the level to which high order '
@@ -137,6 +142,10 @@ def process_partition(args):
     if not os.path.isdir(args.outd):
         raise ValueError('Invalid output directory')
 
+    # Read the mesh and query the partition info
+    mesh = NativeReader(args.mesh)
+    pinfo = mesh.partition_info('spt')
+
     # Partition weights
     if ':' in args.np:
         pwts = [int(w) for w in args.np.split(':')]
@@ -144,10 +153,17 @@ def process_partition(args):
         pwts = [1]*int(args.np)
 
     # Element weights
-    if args.elewts:
-        ewts = {e: int(w) for e, w in (ew.split(':') for ew in args.elewts)}
+    if args.elewts == ['balanced']:
+        ewts = None
+    elif len(pinfo) == 1:
+        ewts = {next(iter(pinfo)): 1}
     else:
-        ewts = {'quad': 6, 'tri': 3, 'tet': 3, 'hex': 18, 'pri': 10, 'pyr': 6}
+        ewts = {e: int(w) for e, w in (ew.split(':') for ew in args.elewts)}
+
+    # Ensure all weights have been provided
+    if ewts is not None and len(ewts) != len(pinfo):
+        missing = ', '.join(set(pinfo) - set(ewts))
+        raise ValueError(f'Missing element weights for: {missing}')
 
     # Partitioner-specific options
     opts = dict(s.split(':', 1) for s in args.popts)
@@ -166,7 +182,7 @@ def process_partition(args):
             raise RuntimeError('No partitioners available')
 
     # Partition the mesh
-    mesh, rnum, part_soln_fn = part.partition(NativeReader(args.mesh))
+    mesh, rnum, part_soln_fn = part.partition(mesh)
 
     # Prepare the solutions
     solnit = (part_soln_fn(NativeReader(s)) for s in args.solns)

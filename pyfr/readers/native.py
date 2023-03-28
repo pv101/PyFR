@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from collections.abc import Mapping
 from functools import cached_property
 import os
@@ -53,6 +51,9 @@ class NativeReader(Mapping):
         self._file.visititems(visitor)
 
         return keys
+
+    def attrs(self, aname):
+        return self._file[aname].attrs
 
     @memoize
     def array_info(self, prefix):

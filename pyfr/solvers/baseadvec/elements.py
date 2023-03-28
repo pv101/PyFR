@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from pyfr.backends.base import MetaKernel
 from pyfr.solvers.base import BaseElements
 
 
@@ -31,7 +28,6 @@ class BaseAdvectionElements(BaseElements):
             bufs |= {'scal_upts_cpy'}
 
         return bufs
-
     
     def add_src_macro(self, mod, name, tplargs):
         for m, n in self._srctplargs['srcmacros']:
@@ -55,8 +51,8 @@ class BaseAdvectionElements(BaseElements):
             self._external_vals[name] = value
             
 
-    def set_backend(self, *args, **kwargs):
-        super().set_backend(*args, **kwargs)
+    def set_backend(self, backend, nscalupts, nonce, linoff):
+        super().set_backend(backend, nscalupts, nonce, linoff)
 
         kernels = self.kernels
 
@@ -72,7 +68,12 @@ class BaseAdvectionElements(BaseElements):
         plocsrc = self._ploc_in_src_exprs
         solnsrc = self._soln_in_src_exprs
 
-        
+        # Source term kernel arguments
+        srctplargs = {
+            'ndims': self.ndims,
+            'nvars': self.nvars,
+            'srcex': self._src_exprs
+        }
 
         # Interpolation from elemental points
         kernels['disu'] = lambda uin: self._be.kernel(
@@ -122,7 +123,7 @@ class BaseAdvectionElements(BaseElements):
 
         # In-place solution filter
         if self.cfg.getint('soln-filter', 'nsteps', '0'):
-            def filter_soln(uin):
+            def modal_filter(uin):
                 mul = self._be.kernel(
                     'mul', self.opmat('M10'), self.scal_upts[uin],
                     out=self._scal_upts_temp
@@ -131,6 +132,29 @@ class BaseAdvectionElements(BaseElements):
                     'copy', self.scal_upts[uin], self._scal_upts_temp
                 )
 
-                return MetaKernel([mul, copy])
+                return self._be.ordered_meta_kernel([mul, copy])
 
-            kernels['filter_soln'] = filter_soln
+            kernels['modal_filter'] = modal_filter
+
+        shock_capturing = self.cfg.get('solver', 'shock-capturing', 'none')
+        if shock_capturing == 'entropy-filter':
+            tags = {'align'}
+
+            # Allocate one minimum entropy value per interface
+            self.nfaces = len(self.nfacefpts)
+            ext = nonce + 'entmin_int'
+            self.entmin_int = self._be.matrix((self.nfaces, self.neles),
+                                              tags=tags, extent=ext)
+
+            # Setup nodal/modal operator matrices
+            self.vdm = self._be.const_matrix(self.basis.ubasis.vdm.T)
+            self.invvdm = self._be.const_matrix(self.basis.ubasis.invvdm.T)
+        else:
+            self.entmin_int = None
+
+    def get_entmin_int_fpts_for_inter(self, eidx, fidx):
+        return (self.entmin_int.mid,), (fidx,), (eidx,)
+
+    def get_entmin_bc_fpts_for_inter(self, eidx, fidx):
+        nfp = self.nfacefpts[fidx]
+        return (self.entmin_int.mid,)*nfp, (fidx,)*nfp, (eidx,)*nfp

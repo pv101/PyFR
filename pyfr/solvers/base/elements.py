@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from functools import cached_property
 import math
 import re
@@ -50,10 +48,10 @@ class BaseElements:
         self.nfacefpts = basis.nfacefpts
         self.nmpts = basis.nmpts
 
-    #set neg div con f external
-    
-    #another method to add an array of module path and macro names and arguements macro into neg div con f
-    
+    @staticmethod
+    def validate_formulation(form, intg, cfg):
+        pass
+
     def pri_to_con(pris, cfg):
         pass
 
@@ -157,14 +155,12 @@ class BaseElements:
         # Variable and function substitutions
         subs = self.cfg.items('constants')
         subs |= dict(x='ploc[0]', y='ploc[1]', z='ploc[2]')
-        subs |= dict(abs='fabs', pi=str(math.pi))
+        subs |= dict(abs='fabs', pi=math.pi)
         subs |= {v: f'u[{i}]' for i, v in enumerate(convars)}
 
         return [self.cfg.getexpr('solver-source-terms', v, '0', subs=subs)
                 for v in convars]
 
-    # hacked - need to check ini file for whether we are using turbulence generator
-    
     @cached_property
     def _ploc_in_src_exprs(self):
         return any(re.search(r'\bploc\b', ex) for ex in self._src_exprs) or True
@@ -214,7 +210,7 @@ class BaseElements:
         # Allocate the storage required by the time integrator
         self.scal_upts = [backend.matrix(self.scal_upts.shape,
                                          self.scal_upts, tags={'align'})
-                           for i in range(nscalupts)]
+                          for i in range(nscalupts)]
 
         # Find/allocate space for a solution-sized scalar
         tags = self.scal_upts[0].tags
@@ -301,7 +297,8 @@ class BaseElements:
     def qpts(self):
         return self._be.const_matrix(self.basis.qpts)
 
-    def _gen_pnorm_fpts(self):
+    @cached_property
+    def _pnorm_fpts(self):
         smats = self.smat_at_np('fpts').transpose(1, 3, 0, 2)
 
         # We need to compute |J|*[(J^{-1})^{T}.N] where J is the
@@ -311,25 +308,13 @@ class BaseElements:
 
         # Compute the magnitudes of these flux point normals
         mag_pnorm_fpts = np.einsum('...i,...i', pnorm_fpts, pnorm_fpts)
-        mag_pnorm_fpts = np.sqrt(mag_pnorm_fpts)
+        
 
         # Check that none of these magnitudes are zero
-        if np.any(mag_pnorm_fpts < 1e-10):
+        if np.any(np.sqrt(mag_pnorm_fpts) < 1e-10):
             raise RuntimeError('Zero face normals detected')
 
-        # Normalize the physical normals at the flux points
-        self._norm_pnorm_fpts = pnorm_fpts / mag_pnorm_fpts[..., None]
-        self._mag_pnorm_fpts = mag_pnorm_fpts
-
-    @cached_property
-    def _norm_pnorm_fpts(self):
-        self._gen_pnorm_fpts()
-        return self._norm_pnorm_fpts
-
-    @cached_property
-    def _mag_pnorm_fpts(self):
-        self._gen_pnorm_fpts()
-        return self._mag_pnorm_fpts
+        return pnorm_fpts
 
     @cached_property
     def _smats_djacs_mpts(self):
@@ -391,21 +376,13 @@ class BaseElements:
 
         return smats.reshape(ndims, nmpts, -1), djacs
 
-    def get_mag_pnorms(self, eidx, fidx):
+    def get_pnorms(self, eidx, fidx):
         fpts_idx = self.basis.facefpts[fidx]
-        return self._mag_pnorm_fpts[fpts_idx, eidx]
+        return self._pnorm_fpts[fpts_idx, eidx]
 
-    def get_mag_pnorms_for_inter(self, eidx, fidx):
+    def get_pnorms_for_inter(self, eidx, fidx):
         fpts_idx = self._srtd_face_fpts[fidx][eidx]
-        return self._mag_pnorm_fpts[fpts_idx, eidx]
-
-    def get_norm_pnorms_for_inter(self, eidx, fidx):
-        fpts_idx = self._srtd_face_fpts[fidx][eidx]
-        return self._norm_pnorm_fpts[fpts_idx, eidx]
-
-    def get_norm_pnorms(self, eidx, fidx):
-        fpts_idx = self.basis.facefpts[fidx]
-        return self._norm_pnorm_fpts[fpts_idx, eidx]
+        return self._pnorm_fpts[fpts_idx, eidx]
 
     def get_scal_fpts_for_inter(self, eidx, fidx):
         nfp = self.nfacefpts[fidx]

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from collections import defaultdict
 from configparser import NoOptionError
 
@@ -54,9 +52,6 @@ class BaseDualPseudoIntegrator(BaseCommon):
         # Register index list and current index
         self._regidx = list(range(self.nregs))
         self._idxcurr = 0
-
-        # Get a queue for the pseudointegrator
-        self._queue = backend.queue()
 
         # Global degree of freedom count
         self._gndofs = self._get_gndofs()

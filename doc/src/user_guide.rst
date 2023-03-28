@@ -26,12 +26,20 @@ The following commands are available from the ``pyfr`` program:
 
         pyfr import mesh.msh mesh.pyfrm
 
-2. ``pyfr partition`` --- partition an existing mesh and
+2. ``pyfr partition`` --- partition or repartition an existing mesh and
    associated solution files.
 
    Example::
 
-       pyfr partition 2 mesh.pyfrm solution.pyfrs .
+       pyfr partition 2 mesh.pyfrm solution.pyfrs outdir/
+
+   Here, the newly partitioned mesh and solution are placed into the
+   directory `outdir`.  Multiple solutions can be provided.
+   Time-average files can also be partitioned, too.
+
+   For mixed grids it is usually necessary to provide weights for each
+   element type.  Further details can be found in the
+   :ref:`performance guide <perf mixed grids>`.
 
 3. ``pyfr run`` --- start a new PyFR simulation. Example::
 
@@ -42,25 +50,36 @@ The following commands are available from the ``pyfr`` program:
 
         pyfr restart mesh.pyfrm solution.pyfrs
 
-5. ``pyfr export`` --- convert a PyFR ``.pyfrs`` file into an unstructured
-   VTK ``.vtu`` or ``.pvtu`` file. If a ``-k`` flag is provided with an integer
-   argument then ``.pyfrs`` elements are converted to high-order VTK cells
-   which are exported, where the order of the VTK cells is equal to the value
-   of the integer argument.
+   It is also possible to restart with a different configuration file.
    Example::
+
+        pyfr restart mesh.pyfrm solution.pyfrs configuration.ini
+
+5. ``pyfr export`` --- convert a PyFR ``.pyfrs`` file into an
+   unstructured VTK ``.vtu`` or ``.pvtu`` file. If a ``-k`` flag is
+   provided with an integer argument then ``.pyfrs`` elements are
+   converted to high-order VTK cells which are exported, where the
+   order of the VTK cells is equal to the value of the integer
+   argument. Example::
 
         pyfr export -k 4 mesh.pyfrm solution.pyfrs solution.vtu
 
-   If a ``-d`` flag is provided with an integer argument then ``.pyfrs``
-   elements are subdivided into linear VTK cells which are exported, where the
-   number of sub-divisions is equal to the value of the integer argument.
-   Example::
+   If a ``-d`` flag is provided with an integer argument then
+   ``.pyfrs`` elements are subdivided into linear VTK cells which are
+   exported, where the number of sub-divisions is equal to the value of
+   the integer argument. Example::
 
         pyfr export -d 4 mesh.pyfrm solution.pyfrs solution.vtu
 
-   If no flags are provided then ``.pyfrs`` elements are converted to high-order
-   VTK cells which are exported, where the order of the cells is equal to the
-   order of the solution data in the ``.pyfrs`` file.
+   If no flags are provided then ``.pyfrs`` elements are converted to
+   high-order VTK cells which are exported, where the order of the
+   cells is equal to the order of the solution data in the ``.pyfrs``
+   file.
+
+   By default all of the fields in the ``.pyfrs`` file will be
+   exported. If only a specific field is desired this can be specified
+   with the ``-f`` flag; for example ``-f density -f velocity`` will
+   only export the *density* and *velocity* fields.
 
 Running in Parallel
 -------------------
@@ -79,7 +98,8 @@ The .ini configuration file parameterises the simulation. It is written
 in the `INI <http://en.wikipedia.org/wiki/INI_file>`_ format.
 Parameters are grouped into sections. The roles of each section and
 their associated parameters are described below. Note that both ``;`` and
-``#`` may be used as comment characters.
+``#`` may be used as comment characters.  Additionally, all parameter
+values support environment variable expansion.
 
 Backends
 --------
@@ -101,6 +121,14 @@ Parameterises the backend with
 
     ``linear`` | ``random``
 
+3. ``collect-wait-times`` --- If to track MPI request wait times or not:
+
+    ``True`` | ``False``
+
+4. ``collect-wait-times-len`` --- Size of the wait time history buffer:
+
+     *int*
+
 Example::
 
     [backend]
@@ -114,7 +142,7 @@ Parameterises the CUDA backend with
 
 1. ``device-id`` --- method for selecting which device(s) to run on:
 
-     *int* | ``round-robin`` | ``local-rank``
+     *int* | ``round-robin`` | ``local-rank`` | ``uuid``
 
 2. ``mpi-type`` --- type of MPI library that is being used:
 
@@ -137,7 +165,7 @@ Parameterises the HIP backend with
 
 1. ``device-id`` --- method for selecting which device(s) to run on:
 
-     *int* | ``local-rank``
+     *int* | ``local-rank`` | ``uuid``
 
 2. ``mpi-type`` --- type of MPI library that is being used:
 
@@ -164,7 +192,7 @@ Parameterises the OpenCL backend with
 
 3. ``device-id`` --- for selecting which device(s) to run on:
 
-    *int* | *string* | ``local-rank``
+    *int* | *string* | ``local-rank`` | ``uuid``
 
 4. ``gimmik-max-nnz`` --- cutoff for GiMMiK in terms of the number of
    non-zero entires in a constant matrix:
@@ -196,6 +224,12 @@ Parameterises the OpenMP backend with
    two and at least 32:
 
     *int*
+
+4. ``schedule`` --- OpenMP loop scheduling scheme:
+
+    ``static`` | ``dynamic`` | ``dynamic, n`` | ``guided`` | ``guided, n``
+
+    where *n* is a positive integer.
 
 Example::
 
@@ -272,6 +306,12 @@ Parameterises the solver with
 
     where
 
+    ``euler`` requires
+
+        - ``shock-capturing`` --- shock capturing scheme:
+
+          ``none`` | ``entropy-filter``
+
     ``navier-stokes`` requires
 
         - ``viscosity-correction`` --- viscosity correction:
@@ -280,7 +320,7 @@ Parameterises the solver with
 
         - ``shock-capturing`` --- shock capturing scheme:
 
-          ``none`` | ``artificial-viscosity``
+          ``none`` | ``artificial-viscosity`` | ``entropy-filter``
 
 2. ``order`` --- order of polynomial solution basis:
 
@@ -297,7 +337,7 @@ Example::
     order = 3
     anti-alias = flux
     viscosity-correction = none
-    shock-capturing = artificial-viscosity
+    shock-capturing = entropy-filter
 
 [solver-time-integrator]
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -389,13 +429,13 @@ Parameterises the time-integration scheme used by the solver with
 
            *float*
 
+        - ``controller`` --- time-step controller
+
+           ``none``
+
         - ``pseudo-dt`` --- pseudo time-step
 
            *float*
-
-        - ``controller`` --- pseudo time-step controller
-
-           ``none``
 
         - ``pseudo-niters-max`` --- minimum number of iterations
 
@@ -576,6 +616,30 @@ Example::
     rhov = z*rho
     rhow = 1.0
     E = 1.0/(1.0+x)
+
+[solver-entropy-filter]
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Parameterises entropy filter for shock capturing with
+
+1. ``d-min`` --- minimum allowable density:
+
+    *float*
+
+2. ``p-min`` --- minimum allowable pressure:
+
+    *float*
+
+3. ``e-tol`` --- entropy tolerance:
+
+    *float*
+
+Example::
+
+    [solver-entropy-filter]
+    d-min = 1e-6
+    p-min = 1e-6
+    e-tol = 1e-6
 
 [solver-artificial-viscosity]
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1402,24 +1466,39 @@ Time average quantities. Parameterised with
 
     ``continuous`` | ``windowed``
 
-    Windowed outputs averages over each ``dt- out`` period. Whereas, continuous
-    outputs averages over all ``dt-out`` periods thus far completed within a
-    given invocation of PyFR. The default is ``windowed``.
+    In continuous mode each output file contains average data from
+    ``tstart`` until the current time. In windowed mode each output
+    file only contains average data for the most recent ``dt-out`` time
+    units. The default is ``windowed``.
 
-5. ``basedir`` --- relative path to directory where outputs will be
+5. ``std-mode`` --- standard deviation reporting mode:
+
+    ``summary`` | ``all``
+
+    If to output full standard deviation fields or just summary
+    statistics.  In lieu of a complete field, summary instead reports
+    the maximum and average standard deviation for each field. The
+    default is ``summary`` with ``all`` doubling the size of the
+    resulting files.
+
+6. ``basedir`` --- relative path to directory where outputs will be
    written:
 
     *string*
 
-6. ``basename`` --- pattern of output names:
+7. ``basename`` --- pattern of output names:
 
     *string*
 
-7. ``precision`` --- output file number precision:
+8. ``precision`` --- output file number precision:
 
     ``single`` | ``double``
 
-8. ``region`` --- region to be written, specified as either the
+    The default is ``single``. Note that this only impacts the output,
+    with statistic accumulation *always* being performed in double
+    precision.
+
+9. ``region`` --- region to be written, specified as either the
    entire domain using ``*``, a combination of the geometric shapes
    specified in :ref:`regions`, or a sub-region of elements that have
    faces on a specific domain boundary via the name of the domain
@@ -1427,20 +1506,17 @@ Time average quantities. Parameterised with
 
     ``*`` | ``shape(args, ...)`` | *string*
 
-9. ``avg``-*name* --- expression to time average, written as a function of
-   the primitive variables and gradients thereof; multiple expressions,
-   each with their own *name*, may be specified:
+10. ``avg``-*name* --- expression to time average, written as a
+    function of the primitive variables and gradients thereof;
+    multiple expressions, each with their own *name*, may be specified:
 
     *string*
 
-10. ``fun-avg``-*name* --- expression to compute at file output time,
+11. ``fun-avg``-*name* --- expression to compute at file output time,
     written as a function of any ordinary average terms; multiple
     expressions, each with their own *name*, may be specified:
 
     *string*
-
-    As ``fun-avg`` terms are evaluated at write time, these are only indirectly
-    effected by the averaging mode.
 
 Example::
 
@@ -1460,7 +1536,6 @@ Example::
     fun-avg-upup = uu - u*u
     fun-avg-vpvp = vv - v*v
     fun-avg-upvp = uv - u*v
-    fun-avg-urms = sqrt(uu - u*u + vv - v*v)
 
 .. _integrate-plugin:
 
@@ -1512,8 +1587,6 @@ Example::
 
     int-E = rho*(u*u + v*v + w*w)
     int-enst = rho*(%(vor1)s*%(vor1)s + %(vor2)s*%(vor2)s + %(vor3)s*%(vor3)s)
-
-.. _regions:
 
 Regions
 -------

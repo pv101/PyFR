@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
-
+from math import prod
 import re
 
 import numpy as np
 
-from pyfr.util import match_paired_paren
+from pyfr.util import match_paired_paren, ndrange
 
 
 class Arg:
@@ -12,13 +11,14 @@ class Arg:
         self.name = name
 
         specptn = r'''
-            (?:(in|inout|out)\s+)?                           # Intent
-            (?:(broadcast(?:-row|-col)|mpi|scalar|view)\s+)? # Attrs
-            ([A-Za-z_]\w*)                                   # Data type
-            ((?:\[\d+\]){0,2})$                              # Dimensions
+            (?:(in|inout|out)\s+)?                            # Intent
+            (?:(broadcast(?:-row|-col)?|mpi|scalar|view)\s+)? # Attrs
+            (?:reduce\((min)\)\s+)?                           # Reduction
+            ([A-Za-z_]\w*)                                    # Data type
+            ((?:\[\d+\]){0,2})$                               # Dimensions
         '''
         dimsptn = r'(?<=\[)\d+(?=\])'
-        usedptn = fr'(?:[^A-Za-z]|^){name}[^A-Za-z0-9]'
+        usedptn = fr'(?:[^A-Za-z_]|^){name}[^A-Za-z0-9]'
 
         # Parse our specification
         m = re.match(specptn, spec, re.X)
@@ -30,28 +30,38 @@ class Arg:
         # Properties
         self.intent = g[0] or 'in'
         self.attrs = g[1] or ''
-        self.dtype = g[2]
+        self.reduceop = g[2]
+        self.dtype = g[3]
+        self.cdimstr = g[4]
 
-        # Dimensions
-        self.cdims = [int(d) for d in re.findall(dimsptn, g[3])]
+        # Dimension
+        self.cdims = [int(d) for d in re.findall(dimsptn, g[4])]
         self.ncdim = len(self.cdims)
 
         # Attributes
+        self.isbroadcast = self.attrs == 'broadcast'
         self.isbroadcastr = self.attrs == 'broadcast-row'
         self.isbroadcastc = self.attrs == 'broadcast-col'
         self.ismpi = self.attrs == 'mpi'
-        self.isused = bool(re.search(usedptn, body))
         self.isview = self.attrs == 'view'
         self.isscalar = self.attrs == 'scalar'
         self.isvector = not self.isscalar
+        self.isreduce = bool(self.reduceop)
+        self.isused = bool(re.search(usedptn, body))
 
         # Validation
         if self.attrs.startswith('broadcast') and self.intent != 'in':
             raise ValueError('Broadcast arguments must be of intent in')
+        if self.isbroadcast and self.ncdim != 2:
+            raise ValueError('Broadcasts must have two dimensions')
         if self.isbroadcastr and self.ncdim != 1:
             raise ValueError('Row broadcasts must have one dimension')
-        if self.isbroadcastc and self.ncdim == 1:
-            raise ValueError('Column broadcasts must have zero or two dims')
+        if self.isreduce and self.intent != 'out':
+            raise ValueError('Reduction arguments must be of intent out')
+        if self.isreduce and self.dtype != 'fpdtype_t':
+            raise ValueError('Reduction arguments must be of type fpdtype_t')
+        if self.isreduce and self.isscalar:
+            raise ValueError('Scalar arguments can not be reduced')
         if self.isscalar and self.dtype != 'fpdtype_t':
             raise ValueError('Scalar arguments must be of type fpdtype_t')
 
@@ -82,7 +92,7 @@ class BaseKernelGenerator:
             raise ValueError('MPI matrices are not supported for 2D kernels')
 
         # Render the main body of our kernel
-        self.body = self._render_body(body)
+        self.body, self.preamble = self._render_body_preamble(body)
 
         # Determine the dimensions to be iterated over
         self._dims = ['_nx'] if ndim == 1 else ['_ny', '_nx']
@@ -113,14 +123,28 @@ class BaseKernelGenerator:
         # Return
         return self.ndim, argn, argt
 
-    def ldim_size(self, name, *factor):
-        return f'ld{name}'
+    def ldim_size(self, name, factor=1):
+        pass
 
     def needs_ldim(self, arg):
-        return self.ndim == 2 or (arg.ncdim > 0 and not arg.ismpi)
+        pass
 
     def render(self):
         pass
+
+    def _match_arg(self, arg):
+        bmtch = r'\[({0})\]'.format(match_paired_paren('[]'))
+        ptrns = [r'\b{0}\b', r'\b{0}' + bmtch, r'\b{0}' + 2*bmtch]
+
+        return ptrns[arg.ncdim].format(arg.name)
+
+    def _deref_arg(self, arg):
+        if arg.isview:
+            return self._deref_arg_view(arg)
+        elif self.ndim == 1:
+            return self._deref_arg_array_1d(arg)
+        else:
+            return self._deref_arg_array_2d(arg)
 
     def _deref_arg_view(self, arg):
         ptns = [
@@ -136,6 +160,11 @@ class BaseKernelGenerator:
         #   name => name_v[X_IDX + BLK_IDX]
         if arg.ncdim == 0:
             ix = 'X_IDX + BLK_IDX'
+        # 2D broadcast vector
+        #   name[\1][\2] => name_v[ldim*(\1) + (\2)]
+        elif arg.isbroadcast and arg.ncdim == 2:
+            lx = self.ldim_size(arg.name)
+            ix = fr'{lx}*\1 + BCAST_BLK({arg.cdims[0]}, \2, {lx})'
         # Tightly packed MPI Vector:
         #   name[\1] => name_v[nx*(\1) + X_IDX + BLK_IDX]
         elif arg.ncdim == 1 and arg.ismpi:
@@ -160,10 +189,20 @@ class BaseKernelGenerator:
         return f'{arg.name}_v[{ix}]'
 
     def _deref_arg_array_2d(self, arg):
+        # 2D broadcast vector
+        #   name[\1][\2] => name_v[ldim*(\1) + (\2)]
+        if arg.isbroadcast and arg.ncdim == 2:
+            lx = self.ldim_size(arg.name)
+            ix = fr'{lx}*(\1) + BCAST_BLK({arg.cdims[0]}, \2, {lx})'
         # Column broadcast matrix with zero dimension:
         #   name => name_v[X_IDX + BLK_IDX]
-        if arg.ncdim == 0 and arg.isbroadcastc:
+        elif arg.ncdim == 0 and arg.isbroadcastc:
             ix = 'X_IDX + BLK_IDX'
+        # Column broadcast matrix with one dimension
+        #   name[\1] => name_v[ldim*(\1) + X_IDX + BLK_IDX*ns]
+        elif arg.ncdim == 1 and arg.isbroadcastc:
+            lx = self.ldim_size(arg.name)
+            ix = fr'{lx}*(\1) + BLK_IDX*{arg.cdims[0]}'
         # Matrix:
         #   name => name_v[ldim*_y + X_IDX + BLK_IDX*ny]
         elif arg.ncdim == 0:
@@ -173,7 +212,7 @@ class BaseKernelGenerator:
         #   name[\1] => name_v[ldim*_y + \1]
         elif arg.isbroadcastr:
             lx = self.ldim_size(arg.name)
-            ix = fr'{lx}*_y + BCAST_BLK(\1, {lx})'
+            ix = fr'{lx}*_y + BCAST_BLK(_ny, \1, {lx})'
         # Stacked matrix:
         #   name[\1] => name_v[ldim*_y + X_IDX_AOSOA(\1, nv) + BLK_IDX*nv*ny]
         elif arg.ncdim == 1:
@@ -185,7 +224,7 @@ class BaseKernelGenerator:
         #                          BLK_IDX*ns*nv]
         elif arg.isbroadcastc:
             lx = self.ldim_size(arg.name, arg.cdims[1])
-            ix = (fr'{lx}*\1 + X_IDX_AOSOA(\2, {arg.cdims[1]}) + '
+            ix = (fr'{lx}*(\1) + X_IDX_AOSOA(\2, {arg.cdims[1]}) + '
                   f'BLK_IDX*{arg.cdims[0]*arg.cdims[1]}')
         # Doubly stacked matrix:
         #   name[\1][\2] => name_v[((\1)*ny + _y)*ldim + X_IDX_AOSOA(\2, nv) +
@@ -199,9 +238,6 @@ class BaseKernelGenerator:
         return f'{arg.name}_v[{ix}]'
 
     def _render_body(self, body):
-        bmch = r'\[({0})\]'.format(match_paired_paren('[]'))
-        ptns = [r'\b{0}\b', r'\b{0}' + bmch, r'\b{0}' + 2*bmch]
-
         # At single precision suffix all floating point constants by 'f'
         if self.fpdtype == np.float32:
             body = re.sub(r'(?=\d*[.eE])(?=\.?\d)\d*\.?\d*(?:[eE][+-]?\d+)?',
@@ -209,15 +245,157 @@ class BaseKernelGenerator:
 
         # Dereference vector arguments
         for va in self.vectargs:
-            if va.isview:
-                darg = self._deref_arg_view(va)
-            else:
-                if self.ndim == 1:
-                    darg = self._deref_arg_array_1d(va)
-                else:
-                    darg = self._deref_arg_array_2d(va)
+            subp = self._match_arg(va)
+            darg = self._deref_arg(va)
 
-            # Substitute
-            body = re.sub(ptns[va.ncdim].format(va.name), darg, body)
+            # Regular
+            if not va.isreduce:
+                body = re.sub(subp, darg, body)
+            # Reduction
+            else:
+                afun = f'atomic_{va.reduceop}_fpdtype'
+                body = f'fpdtype_t {va.name}{va.cdimstr};\n{body}'
+
+                if va.ncdim == 0:
+                    body += f'{afun}(&{darg}, {va.name});\n'
+                else:
+                    for ij in ndrange(*va.cdims):
+                        lval = va.name + ''.join(f'[{i}]' for i in ij)
+                        gval = re.sub(subp, darg, lval)
+
+                        body += f'{afun}(&{gval}, {lval});\n'
 
         return body
+
+    def _render_body_preamble(self, body):
+        return self._render_body(body), ''
+
+
+class BaseGPUKernelGenerator(BaseKernelGenerator):
+    # Block sizes for 1D and 2D kernels, respectively
+    block1d = None
+    block2d = None
+
+    # Expressions for local x/y id's and global x id
+    _lid = None
+    _gid = None
+
+    # Prefix for variables in shared memory
+    _shared_prfx = None
+
+    # Expression for synchronising shared memory
+    _shared_sync = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Specialise
+        if self.ndim == 1:
+            self.preamble += 'if (_x < _nx)'
+        else:
+            self.preamble += f'''
+                int _ysize = (_ny + {self.block2d[1] - 1}) / {self.block2d[1]};
+                int _ystart = {self._lid[1]}*_ysize;
+                int _yend = min(_ny, _ystart + _ysize);
+                for (int _y = _ystart; _x < _nx && _y < _yend; _y++)'''
+
+    def ldim_size(self, name, factor=1):
+        return f'ld{name}'
+
+    def needs_ldim(self, arg):
+        return self.ndim == 2 or (arg.ncdim > 0 and not arg.ismpi)
+
+    def _preload_arg(self, arg):
+        bx, by = self.block2d[:2]
+        lx, ly = self._lid
+        sprfx = self._shared_prfx
+
+        sname = f'{arg.name}_s'
+
+        # Determine the total number of elements in the array
+        n = prod(arg.cdims)
+
+        if arg.dtype == 'fpdtype_t':
+            itemsize = np.dtype(self.fpdtype).itemsize
+        else:
+            itemsize = 4
+
+        # Tally up the number of bytes required for the shared array
+        nbytes = n*bx*itemsize
+
+        # Dereference the argument
+        rhs = self._deref_arg(arg)
+
+        if arg.ncdim == 1:
+            lhs = f'{sname}[_i][{lx}]'
+            rhs = rhs.replace(r'\1', '_i')
+        else:
+            dim1 = f'(_i / {arg.cdims[1]})'
+            dim2 = f'(_i % {arg.cdims[1]})'
+
+            lhs = f'{sname}[{dim1}][{dim2}][{lx}]'
+            rhs = rhs.replace(r'\1', dim1).replace(r'\2', dim2)
+
+        # Declare the shared array
+        lcode = f'{sprfx} {arg.dtype} {sname}{arg.cdimstr}[{bx}];'
+
+        # Emit the for loop to populate the array
+        lcode += f'''
+            for (int _i = {ly}; _x < _nx && _i < {n}; _i += {by})
+                {lhs} = {rhs};'''
+
+        return sname, lcode, nbytes
+
+    def _render_body_preamble(self, body):
+        preamble = []
+
+        # For 2D kernels, preload data from column broadcast arrays
+        # into shared memory to guarantee reuse
+        if self.ndim == 2:
+            usedb = 0
+
+            for va in self.vectargs:
+                if va.isbroadcastc and va.ncdim >= 1:
+                    # Preload the argument into shared memory
+                    sname, lcode, nbytes = self._preload_arg(va)
+
+                    # Limit ourselves to 32KiB of shared state
+                    if usedb + nbytes > 32*1024:
+                        continue
+
+                    preamble.append(lcode)
+                    usedb += nbytes
+
+                    if va.ncdim == 1:
+                        subs = fr'{sname}[\1][{self._lid[0]}]'
+                    else:
+                        subs = fr'{sname}[\1][\2][{self._lid[0]}]'
+
+                    # Substitute all uses of the argument in the body
+                    body = re.sub(self._match_arg(va), subs, body)
+
+        # If we performed any preloading then emit a shared memory barrier
+        if preamble:
+            preamble.append(f'{self._shared_sync};')
+
+        return self._render_body(body), '\n'.join(preamble)
+
+    def render(self):
+        spec = self._render_spec()
+
+        return f'''{spec}
+            {{
+                int _x = {self._gid};
+                #define X_IDX (_x)
+                #define X_IDX_AOSOA(v, nv) SOA_IX(X_IDX, v, nv)
+                #define BLK_IDX 0
+                #define BCAST_BLK(r, c, ld)  c
+                {self.preamble}
+                {{
+                    {self.body}
+                }}
+                #undef X_IDX
+                #undef X_IDX_AOSOA
+                #undef BLK_IDX
+                #undef BCAST_BLK
+            }}'''

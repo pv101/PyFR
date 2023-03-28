@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from pyfr.integrators.base import BaseIntegrator
 from pyfr.integrators.base import BaseCommon
 
@@ -13,11 +11,6 @@ class BaseStdIntegrator(BaseCommon, BaseIntegrator):
         # Sanity checks
         if self.controller_needs_errest and not self.stepper_has_errest:
             raise TypeError('Incompatible stepper/controller combination')
-
-        # Ensure the system is compatible with our formulation
-        if 'std' not in systemcls.elementscls.formulations:
-            raise RuntimeError(f'System {systemcls.name} does not support '
-                               f'time stepping formulation std')
 
         # Determine the amount of temp storage required by this method
         self.nregs = self.stepper_nregs
@@ -41,6 +34,10 @@ class BaseStdIntegrator(BaseCommon, BaseIntegrator):
         self._regidx = list(range(self.nregs))
         self._idxcurr = 0
 
+        # Pre-process solution if necessary
+        self.system.preproc(self.tcurr,
+                            self.system.ele_scal_upts(self._idxcurr))
+
         # Global degree of freedom count
         self._gndofs = self._get_gndofs()
 
@@ -53,6 +50,7 @@ class BaseStdIntegrator(BaseCommon, BaseIntegrator):
     @property
     def soln(self):
         if not self._curr_soln:
+            self.system.postproc(self._idxcurr)
             self._curr_soln = self.system.ele_scal_upts(self._idxcurr)
 
         return self._curr_soln
@@ -62,6 +60,7 @@ class BaseStdIntegrator(BaseCommon, BaseIntegrator):
         system = self.system
 
         if not self._curr_grad_soln:
+            system.postproc(self._idxcurr)
             system.compute_grads(self.tcurr, self._idxcurr)
             self._curr_grad_soln = [e.get() for e in system.eles_vect_upts]
 
@@ -70,3 +69,11 @@ class BaseStdIntegrator(BaseCommon, BaseIntegrator):
     @property
     def controller_needs_errest(self):
         pass
+
+    @property
+    def entmin(self):
+        return self.system.get_ele_entmin_int()
+
+    @entmin.setter
+    def entmin(self, value):
+        self.system.set_ele_entmin_int(value)

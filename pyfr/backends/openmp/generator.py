@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from pyfr.backends.base.generator import BaseKernelGenerator
 
 
@@ -18,15 +16,9 @@ class OpenMPKernelGenerator(BaseKernelGenerator):
                        }}
                    }}'''
             clean = f'''
-                    for (int _xi = 0; _xi < _remi; _xi += SOA_SZ)
-                    {{
-                        #pragma omp simd
-                        for (int _xj = 0; _xj < SOA_SZ; _xj++)
-                        {{
-                            {self.body}
-                        }}
-                    }}
-                    for (int _xi = _remi, _xj = 0; _xj < _remj; _xj++)
+                    int _xi = 0;
+                    #pragma omp simd
+                    for (int _xj = 0; _xj < _nx % BLK_SZ; _xj++)
                     {{
                         {self.body}
                     }}'''
@@ -44,20 +36,10 @@ class OpenMPKernelGenerator(BaseKernelGenerator):
                        }}
                    }}'''
             clean = f'''
-                    for (int _y = 0; _y < _ny; _y++)
+                    for (int _y = 0, _xi = 0; _y < _ny; _y++)
                     {{
-                        for (int _xi = 0; _xi < _remi; _xi += SOA_SZ)
-                        {{
-                            #pragma omp simd
-                            for (int _xj = 0; _xj < SOA_SZ; _xj++)
-                            {{
-                                {self.body}
-                            }}
-                        }}
-                    }}
-                    for (int _y = 0; _y < _ny; _y++)
-                    {{
-                        for (int _xi = _remi, _xj = 0; _xj < _remj; _xj++)
+                        #pragma omp simd
+                        for (int _xj = 0; _xj < _nx % BLK_SZ; _xj++)
                         {{
                             {self.body}
                         }}
@@ -68,21 +50,18 @@ class OpenMPKernelGenerator(BaseKernelGenerator):
                void {self.name}(const struct kargs *restrict args)
                {{
                    {kargassn};
-                   int nci = _nx / BLK_SZ;
-                   int _remi = ((_nx % BLK_SZ) / SOA_SZ)*SOA_SZ;
-                   int _remj = (_nx % BLK_SZ) % SOA_SZ;
                    #define X_IDX (_xi + _xj)
                    #define X_IDX_AOSOA(v, nv)\
                        ((_xi/SOA_SZ*(nv) + (v))*SOA_SZ + _xj)
-                   #define BLK_IDX ib*BLK_SZ
-                   #define BCAST_BLK(i, ld)\
-                       ((i) % (ld) + ((i) / (ld))*(ld)*_ny)
-                   #pragma omp parallel for
-                   for (int ib = 0; ib < nci; ib++)
+                   #define BLK_IDX (_ib*BLK_SZ)
+                   #define BCAST_BLK(r, c, ld)\
+                       ((c) % (ld) + ((c) / (ld))*(ld)*r)
+                   #pragma omp parallel for {self.schedule}
+                   for (int _ib = 0; _ib < _nx / BLK_SZ; _ib++)
                    {{
                        {core}
                    }}
-                   int ib = nci;
+                   int _ib = _nx / BLK_SZ;
                    {clean}
                    #undef X_IDX
                    #undef X_IDX_AOSOA
@@ -90,8 +69,8 @@ class OpenMPKernelGenerator(BaseKernelGenerator):
                    #undef BCAST_BLK
                }}'''
 
-    def ldim_size(self, name, *factor):
-        return '*'.join(['BLK_SZ'] + [str(f) for f in factor])
+    def ldim_size(self, name, factor=1):
+        return f'{factor}*BLK_SZ' if factor > 1 else 'BLK_SZ'
 
     def needs_ldim(self, arg):
         return False
@@ -105,20 +84,17 @@ class OpenMPKernelGenerator(BaseKernelGenerator):
 
         # Finally, add the vector arguments
         for va in self.vectargs:
+            if va.intent == 'in':
+                kargs.append((f'const {va.dtype}*', f'{va.name}_v'))
+            else:
+                kargs.append((f'{va.dtype}*', f'{va.name}_v'))
+
             # Views
             if va.isview:
-                kargs.append((f'{va.dtype}*', f'{va.name}_v'))
                 kargs.append(('const int*', f'{va.name}_vix'))
 
                 if va.ncdim == 2:
                     kargs.append(('const int*', f'{va.name}_vrstri'))
-            # Arrays
-            else:
-                # Intent in arguments should be marked constant
-                if va.intent == 'in':
-                    kargs.append((f'const {va.dtype}*', f'{va.name}_v'))
-                else:
-                    kargs.append((f'{va.dtype}*', f'{va.name}_v'))
 
         # Argument definition and assignment operations
         kargdefn = ';\n'.join(f'{t} {n}' for t, n in kargs)

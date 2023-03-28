@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from pkg_resources import resource_string
 
 import numpy as np
@@ -240,7 +238,7 @@ class DualRKVdH2RPseudoStepper(DualEmbeddedPairPseudoStepper):
     def step(self, t):
         self.npseudosteps += 1
 
-        q, rhs = self._queue, self._rhs_with_dts
+        run_kernels, rhs = self.backend.run_kernels, self._rhs_with_dts
 
         rold = self._idxcurr
         r1, r2, *rerr = set(self._pseudo_stepper_regidx) - {rold}
@@ -254,7 +252,7 @@ class DualRKVdH2RPseudoStepper(DualEmbeddedPairPseudoStepper):
             kerns = self._get_rkvdh2pseudo_kerns(i, r1, r2, rold, *rerr)
 
             # Execute
-            q.enqueue_and_run(kerns)
+            run_kernels(kerns)
 
             # Swap
             r1, r2 = r2, r1

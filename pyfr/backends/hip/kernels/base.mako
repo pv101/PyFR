@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 <%namespace module='pyfr.backends.base.makoutil' name='pyfr'/>
 
 // AoSoA macros
@@ -7,5 +6,8 @@
 
 // Typedefs
 typedef ${pyfr.npdtype_to_ctype(fpdtype)} fpdtype_t;
+
+// Atomic helpers
+#define atomic_min_fpdtype(addr, val) atomicMin(addr, val)
 
 ${next.body()}

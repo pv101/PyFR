@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
-
 import numpy as np
 
-from pyfr.mpiutil import get_comm_rank_root, get_mpi
+from pyfr.mpiutil import get_comm_rank_root, mpi
 from pyfr.plugins.base import BasePlugin, init_csv
 from pyfr.quadrules import get_quadrule
 
@@ -119,7 +117,7 @@ class SamplerPlugin(BasePlugin):
         # Process these points
         for i, (dist, etype, (uidx, eidx)) in enumerate(closest):
             # Reduce over the distance
-            _, mrank = comm.allreduce((dist, rank), op=get_mpi('minloc'))
+            _, mrank = comm.allreduce((dist, rank), op=mpi.MINLOC)
 
             # If we have the closest point then save the relevant info
             if rank == mrank:
