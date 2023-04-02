@@ -85,32 +85,6 @@
           oldstate *= 277803737UL;
           oldstate ^= oldstate >> b22;
           epscomp = oldstate % 8;
-          
-          //if (pos[1] > 0)
-          //{
-          //   printf("pos1 = %.16lf pos2 = %.16lf epscomp = %d\n", pos[1], pos[2], epscomp);
-          //}
-
-          
-          //newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
-          //xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-          //rot = oldstate >> 59u;
-          //out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-          //pos[1] = ymin + (ymax-ymin)*ldexp((double)out, -32);
-
-          //oldstate = newstate;
-          //newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
-          //xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-          //rot = oldstate >> 59u;
-          //out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-          //pos[2] = zmin + (zmax-zmin)*ldexp((double)out, -32);
-     
-          //oldstate = newstate;
-          //newstate = oldstate * 6364136223846793005ULL + (1442695040888963407ULL | 1ULL);
-          //xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-          //rot = oldstate >> 59u;
-          //out = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-          //epscomp = out % 8;
 
           arg = 0.0;
           % for j in range(ndims):

@@ -5,6 +5,7 @@ import numpy as np
 import random
 import time
 import uuid
+from rtree import index
 
 from collections import defaultdict
 from numpy.lib.recfunctions import structured_to_unstructured
@@ -12,31 +13,6 @@ from pyfr.plugins.base import BasePlugin
 from pyfr.regions import BoxRegion, RotatedBoxRegion
 from pyfr.mpiutil import get_comm_rank_root
 
-class pcg32:
-    def __init__(self, seed):
-        self.state = np.uint64(seed + 0x4d595df4d0f33173)
-        self.multiplier = np.uint64(6364136223846793005)
-        self.increment = np.uint64(1442695040888963407)
-        self.b1 = np.uint32(1)
-        self.b18 = np.uint32(18)
-        self.b27 = np.uint32(27)
-        self.b59 = np.uint32(59)
-        self.b31 = np.uint32(31)
-    def rand(self):
-        oldstate = self.state
-        self.state = (oldstate * self.multiplier) + (self.increment | self.b1)
-        xorshifted = np.uint32(((oldstate >> self.b18) ^ oldstate) >> self.b27)
-        rot = np.uint32(oldstate >> self.b59)
-        return np.uint32((xorshifted >> rot) | (xorshifted << ((-rot) & self.b31)))
-    def random(self):
-        return np.ldexp(self.rand(),-32)
-    def getstate(self):
-        return self.state
-    def randint(self, a, b):
-        return a + self.rand() % (b - a)
-    def choice(self, seq):
-        return seq[self.randint(0, len(seq))]
-        
 class pcg32rxs_m_xs:
     def __init__(self, seed):
         self.state = np.uint32(seed)
@@ -70,17 +46,7 @@ class Turbulence(BasePlugin):
 
     def __init__(self, intg, cfgsect, suffix):
         super().__init__(intg, cfgsect, suffix)
-        
-        #print('PCG testing')
-        #pcg3232 = pcg32rxs_m_xs(2891336495)
-        
-        #cc = 0
-        #while cc < 30:
-        #    print(pcg3232.getstate())
-        #    print("  ")
-        #    print(pcg3232.rand())
-        #    cc += 1
-  
+
         self.tstart = intg.tstart
         self.tbegin = intg.tcurr
         self.tnext = intg.tcurr
@@ -150,11 +116,20 @@ class Turbulence(BasePlugin):
         xtemp = []
         
         tinits = []
+        
+        print('Making tinits for vortices')
+        start = time.time()
 
         while vid < nvorts:
             tinits.append(self.tstart + (xmax-xmin)*pcg32rng.random()/ubar)
             vid += 1
-                 
+            
+        end = time.time()
+        print(f'It took {end-start} s')
+               
+        print('Making vortices')
+        start = time.time()
+          
         while True:     
             for vid, tinit in enumerate(tinits):
                 #print(vid)
@@ -164,14 +139,15 @@ class Turbulence(BasePlugin):
                 eps = 1.0*pcg32rng.randint(0,8)
                 if tinit+((xmax-xmin)/ubar) >= self.tbegin and tinit <= self.tend:
                     xtemp.append(((yinit,zinit),tinit,state))
-                    #print(f'pos1 = {yinit}, pos2 = {zinit}, epscomp = {eps}')
                 tinits[vid] += (xmax-xmin)/ubar
             if all(tinit > self.tend for tinit in tinits):
                 break
         
-        #print(len(xtemp))
         self.vortbuff = np.asarray(xtemp, self.vortdtype)
 
+        end = time.time()
+        print(f'It took {end-start} s')
+        
         #####################
         # Make action buffer#
         #####################
@@ -179,49 +155,153 @@ class Turbulence(BasePlugin):
         self.actbuffs = []
 
         for etype, eles in intg.system.ele_map.items():
+        
+            print('Rotating and extracting {etype} in vortex box')
+            start = time.time()
+            
             neles = eles.neles
             pts = eles.ploc_at_np('upts')
             pts = np.moveaxis(pts, 1, 0)
             ptsr = (rot @ (pts.reshape(3, -1) - shift[:,None])).reshape(pts.shape)
             ptsr = np.moveaxis(ptsr, 0, -1)
             inside = bbox.pts_in_region(ptsr)
+            
+            end = time.time()
+            print(f'It took {end-start} s')
 
             stream = defaultdict(list)
+            stream2 = defaultdict(list)
             sstream = defaultdict()
+            sstream2 = defaultdict()
+            
+            
+            
+
 
             if np.any(inside):
+            
+                print('Some {etype} in vortex box - getting eids and pts')
+                start = time.time()
+                
                 eids = np.any(inside, axis=0).nonzero()[0] # eles in injection box
                 ptsri = ptsr[:,eids,:] # points in injection box
+                
+                end = time.time()
+                print(f'It took {end-start} s')
+                
+                
+                print('New index stuff')
+                start = time.time()
+                
+                p = index.Property()
+                p.dimension = 3
+                p.interleaved = True
+                idx3d = index.Index(properties=p)
+                
+                nlspts = ptsri.shape[0]
+                nleles = ptsri.shape[1]
+
+                for i in range(nleles):
+                    idx3d.insert(i,(ptsri[:,i,0].min(),ptsri[:,i,1].min(),ptsri[:,i,2].min(), ptsri[:,i,0].max(),ptsri[:,i,1].max(),ptsri[:,i,2].max()))
+                
+              
+                
+                end = time.time()
+                print(f'It took {end-start} s')
+                
+
+                print('Checking hits for each vortex in injection box')
+                start = time.time()
+                
                 for vid, vort in enumerate(self.vortbuff):
-                    #print(vid)
+                
+                    #print(f'Checking vortex {vid} of')
+
                     vbox = BoxRegion([xmin-ls, vort['loci'][0]-ls, vort['loci'][1]-ls],
                                      [xmax+ls, vort['loci'][0]+ls, vort['loci'][1]+ls])
-                    elestemp = [] 
-           
-                    vinside = vbox.pts_in_region(ptsri)
 
-                    if np.any(vinside):
-                        elestemp = np.any(vinside, axis=0).nonzero()[0].tolist()
-    
-                    for leid in elestemp:
-                        exmin = ptsri[vinside[:,leid],leid,0].min()
-                        exmax = ptsri[vinside[:,leid],leid,0].max()
+                    elestemp = []
+                    elestemp2 = []
+
+                    #print('old search')
+                    #start = time.time()
+                    
+                    #vinside = vbox.pts_in_region(ptsri)
+                    #if np.any(vinside):
+                    #    elestemp = np.any(vinside, axis=0).nonzero()[0].tolist()
+                        
+                    #end = time.time()
+                    #print(f'It took {end-start} s')
+                   
+                   
+                   
+                   
+                   
+                   
+                   
+                    #print('searchtree') 
+                    #start = time.time()
+                       
+                    rough = np.array(list(set(idx3d.intersection((xmin-ls, vort['loci'][0]-ls, vort['loci'][1]-ls, xmax+ls, vort['loci'][0]+ls, vort['loci'][1]+ls)))))   
+
+                    if np.any(rough):
+                        vinside2 = vbox.pts_in_region(ptsri[:,rough,:])
+                        if np.any(vinside2):
+                            elestemp2 = np.any(vinside2, axis=0).nonzero()[0].tolist()
+                        
+                    end = time.time()
+                    #print(f'It took {end-start} s')
+                    
+
+                    
+                    #for leid in elestemp:
+                    #    exmin = ptsri[vinside[:,leid],leid,0].min()
+                    #    exmax = ptsri[vinside[:,leid],leid,0].max()
+                    #    ts = max(vort['tinit'], vort['tinit'] + ((exmin - xmin - ls)/ubar))
+                     #   te = max(ts,min(ts + (exmax-exmin+2*ls)/ubar,vort['tinit']+((xmax-xmin)/ubar)))
+                    #    stream[eids[leid]].append((vid,ts,te))
+                        
+                    for leid in elestemp2:
+                        exmin = ptsri[vinside2[:,leid],rough[leid],0].min()
+                        exmax = ptsri[vinside2[:,leid],rough[leid],0].max()
                         ts = max(vort['tinit'], vort['tinit'] + ((exmin - xmin - ls)/ubar))
                         te = max(ts,min(ts + (exmax-exmin+2*ls)/ubar,vort['tinit']+((xmax-xmin)/ubar)))
-                        stream[eids[leid]].append((vid,ts,te))
+                        stream2[eids[rough[leid]]].append((vid,ts,te))
+                        
+        
+                end = time.time()
 
-                for k, v in stream.items():
+                print(f'It took {end-start} s')
+                
+                
+                
+                
+
+                print('Sorting vortices by tstart')
+                start = time.time()
+                
+                #for k, v in stream.items():
+                    #print(k)
+                    #print(v)
+                #    v.sort(key=lambda x: x[1]) 
+                #    sstream[k] = np.asarray(v, self.sstreamdtype)
+                    
+                for k, v in stream2.items():
+                    #print(k)
+                    #print(v)
                     v.sort(key=lambda x: x[1]) 
                     sstream[k] = np.asarray(v, self.sstreamdtype)
+                    
+                end = time.time()
+                print(f'It took {end-start} s')
 
-                #nvmx = 0
-                #for leid, actl in sstream.items():
-                #    for i, te in enumerate(actl['te']):
-                #       shft = next((j for j,v in enumerate(actl['ts']) if v > te+btol),len(actl)-1) - i + 1
-                #        if shft > nvmx:
-                            #print(shft)
-                #            nvmx = shft
-                            
+                #print(sstream[0])
+               # print(sstream2[0])
+
+
+                print('Calculating nvmx')
+                start = time.time()
+                
                 nvmx = 0
                 for leid, actl in sstream.items():
                     for i, ts in enumerate(actl['ts']):
@@ -231,9 +311,13 @@ class Turbulence(BasePlugin):
                                 break
                             cnt += 1
                         if cnt > nvmx:
-                            #print(cnt)
                             nvmx = cnt
                 nvmx += 1
+                
+                end = time.time()
+                print(f'It took {end-start} s')
+                
+                
                 buff = np.zeros((nvmx, neles), self.buffdtype)
 
                 actbuff = {'trcl': 0.0, 'sstream': sstream, 'nvmx': nvmx, 'buff': buff,
@@ -282,7 +366,7 @@ class Turbulence(BasePlugin):
                             else:
                                 tstemp = sstream['ts'][0]
                                 if tcurr >= tstemp:
-                                    print(f'DANGER: cannot move anything off of buffer for element {geid} at time {tcurr}. ts for the pending buffer item is {tstemp}')
+                                    print(f'Active vortex in stream cannot fit on buffer.')
                                 
                             if self.actbuffs[abid]['sstream'][geid]['vid'].any() and (self.actbuffs[abid]['buff'][-1,geid]['ts'] < trcl):
                                 trcl = self.actbuffs[abid]['buff'][-1,geid]['ts']
@@ -295,8 +379,5 @@ class Turbulence(BasePlugin):
             if proptnext > self.tnext:
                 self.tnext = proptnext
             else:
-                print('DANGER not advancing')
-                   
-            #self.tnext = min(etype['trcl'] for etype in self.actbuffs)
-            print(self.tnext)
+                print('Not advancing.')
 
