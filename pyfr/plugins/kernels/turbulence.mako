@@ -33,8 +33,8 @@
   fpdtype_t fac = -0.5*invsigma2*invls2;
   fpdtype_t fac2 = invsigma3*gc3;
   
-  fpdtype_t ltinit[${nvmax}];
-  uint32_t lstate[${nvmax}];
+  //fpdtype_t ltinit[${nvmax}];
+  //uint32_t lstate[${nvmax}];
   
   uint32_t oldstate;
   uint32_t newstate;
@@ -46,8 +46,8 @@
   int epscomp;
   
   % for i in range(nvmax):
-    ltinit[${i}] = tinit[${i}][0];
-    lstate[${i}] = state[${i}][0];
+    //ltinit[${i}] = tinit[${i}][0];
+    //lstate[${i}] = state[${i}][0];
   % endfor
   
   % for i, r in enumerate(rot):
@@ -57,12 +57,12 @@
   int i;
   for (int i = 0; i < ${nvmax}; i++)
   {
-      //pos[0] = xmin + (t-tinit[i][0])*ubar;
-      pos[0] = xmin + (t-ltinit[i])*ubar;
+      pos[0] = xmin + (t-tinit[i][0])*ubar;
+      //pos[0] = xmin + (t-ltinit[i])*ubar;
       if (pos[0] <= xmax)
       {
-          //oldstate = state[i][0];
-          oldstate = lstate[i];
+          oldstate = state[i][0];
+          //oldstate = lstate[i];
           newstate = (oldstate * 747796405UL) + 2891336453UL;
           rshift = uint8_t(oldstate >> (b32 - opbits));
           oldstate ^= oldstate >> (opbits + rshift);
