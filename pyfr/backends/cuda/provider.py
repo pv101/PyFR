@@ -78,8 +78,9 @@ class CUDAPointwiseKernelProvider(CUDAKernelProvider,
         grid = get_grid_for_block(block, dims[-1])
 
         # Declare a preference for L1 cache over shared memory
-        #fun.set_cache_pref(prefer_l1=True)
-
+        if not fun.shared_mem:
+            fun.set_cache_pref(prefer_l1=True)
+            
         params = fun.make_params(grid, block)
 
         # Process the arguments
