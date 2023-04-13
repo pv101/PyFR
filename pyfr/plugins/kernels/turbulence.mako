@@ -64,7 +64,7 @@
           oldstate = state[i][0];
           //oldstate = lstate[i];
           newstate = (oldstate * 747796405UL) + 2891336453UL;
-          rshift = uint8_t(oldstate >> (b32 - opbits));
+          rshift = oldstate >> (b32 - opbits);
           oldstate ^= oldstate >> (opbits + rshift);
           oldstate *= 277803737UL;
           oldstate ^= oldstate >> b22;
@@ -72,7 +72,7 @@
           
           oldstate = newstate;
           newstate = (oldstate * 747796405UL) + 2891336453UL;
-          rshift = uint8_t(oldstate >> (b32 - opbits));
+          rshift = oldstate >> (b32 - opbits);
           oldstate ^= oldstate >> (opbits + rshift);
           oldstate *= 277803737UL;
           oldstate ^= oldstate >> b22;
@@ -80,7 +80,7 @@
           
           oldstate = newstate;
           newstate = (oldstate * 747796405UL) + 2891336453UL;
-          rshift = uint8_t(oldstate >> (b32 - opbits));
+          rshift = oldstate >> (b32 - opbits);
           oldstate ^= oldstate >> (opbits + rshift);
           oldstate *= 277803737UL;
           oldstate ^= oldstate >> b22;
