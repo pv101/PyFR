@@ -31,6 +31,7 @@ class pcg32rxs_m_xs:
         oldstate ^= oldstate >> self.b22
         return oldstate
     def random(self):
+        # change to match kernel code exactly ?
         return np.ldexp(self.rand(),-32)
     def getstate(self):
         return self.state

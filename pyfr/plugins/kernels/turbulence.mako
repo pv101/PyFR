@@ -4,13 +4,13 @@
 <%pyfr:macro name='turbulence' params='t, u, ploc, src'>
   fpdtype_t xin = 0.0;
   fpdtype_t ls = ${ls};
-  fpdtype_t ls2 = ${ls}*${ls};
-  fpdtype_t invls2 = 1.0/(${ls}*${ls});
-  fpdtype_t gc3 = ${gc}*${gc}*${gc};
+  fpdtype_t ls2 = ${ls*ls};
+  fpdtype_t invls2 = ${1.0/(ls*ls)};
+  fpdtype_t gc3 = ${gc*gc*gc};
   fpdtype_t rootrs = ${rootrs};
   fpdtype_t srafac = ${srafac};
-  fpdtype_t invsigma2 = 1.0/(${sigma}*${sigma});
-  fpdtype_t invsigma3 = 1.0/(${sigma}*${sigma}*${sigma});
+  fpdtype_t invsigma2 = ${1.0/(sigma*sigma)};
+  fpdtype_t invsigma3 = ${1.0/(sigma*sigma*sigma)};
   fpdtype_t ubar = ${ubar};
   fpdtype_t pos[${ndims}];
   fpdtype_t ttploc[${ndims}];
@@ -30,11 +30,10 @@
   fpdtype_t ymax = ${ymax};
   fpdtype_t zmin = ${zmin};
   fpdtype_t zmax = ${zmax};
-  fpdtype_t fac = -0.5*invsigma2*invls2;
-  fpdtype_t fac2 = invsigma3*gc3;
-  
-  //fpdtype_t ltinit[${nvmax}];
-  //uint32_t lstate[${nvmax}];
+  fpdtype_t fac = ${-0.5/(sigma*sigma*ls*ls)};
+  fpdtype_t fac2 = ${(gc*gc*gc)/(sigma*sigma*sigma)};
+
+  fpdtype_t tbc = 2.3283064365386962890625e-10;
   
   uint32_t oldstate;
   uint32_t newstate;
@@ -45,64 +44,53 @@
 
   int epscomp;
   
-  % for i in range(nvmax):
-    //ltinit[${i}] = tinit[${i}][0];
-    //lstate[${i}] = state[${i}][0];
-  % endfor
-  
   % for i, r in enumerate(rot):
     ttploc[${i}] = ${' + '.join(f'{r[j]}*(ploc[{j}] - {shift[j]})' for j in range(3))};
   % endfor
 
-  int i;
-  for (int i = 0; i < ${nvmax}; i++)
-  {
-      pos[0] = xmin + (t-tinit[i][0])*ubar;
-      //pos[0] = xmin + (t-ltinit[i])*ubar;
-      if (pos[0] <= xmax)
-      {
-          oldstate = state[i][0];
-          //oldstate = lstate[i];
-          newstate = (oldstate * 747796405UL) + 2891336453UL;
-          rshift = oldstate >> (b32 - opbits);
-          oldstate ^= oldstate >> (opbits + rshift);
-          oldstate *= 277803737UL;
-          oldstate ^= oldstate >> b22;
-          pos[1] = ymin + (ymax-ymin)*ldexp((double)oldstate, -32);
-          
-          oldstate = newstate;
-          newstate = (oldstate * 747796405UL) + 2891336453UL;
-          rshift = oldstate >> (b32 - opbits);
-          oldstate ^= oldstate >> (opbits + rshift);
-          oldstate *= 277803737UL;
-          oldstate ^= oldstate >> b22;
-          pos[2] = ymin + (ymax-ymin)*ldexp((double)oldstate, -32);
-          
-          oldstate = newstate;
-          newstate = (oldstate * 747796405UL) + 2891336453UL;
-          rshift = oldstate >> (b32 - opbits);
-          oldstate ^= oldstate >> (opbits + rshift);
-          oldstate *= 277803737UL;
-          oldstate ^= oldstate >> b22;
-          epscomp = oldstate % 8;
+  % for i in range(nvmax):
+    pos[0] = xmin + (t-tinit[${i}][0])*ubar;
+    
+    oldstate = state[${i}][0];
+    newstate = (oldstate * 747796405UL) + 2891336453UL;
+    rshift = oldstate >> (b32 - opbits);
+    oldstate ^= oldstate >> (opbits + rshift);
+    oldstate *= 277803737UL;
+    oldstate ^= oldstate >> b22;
+    pos[1] = ymin + (ymax-ymin)*((fpdtype_t)oldstate * tbc);
+    
+    oldstate = newstate;
+    newstate = (oldstate * 747796405UL) + 2891336453UL;
+    rshift = oldstate >> (b32 - opbits);
+    oldstate ^= oldstate >> (opbits + rshift);
+    oldstate *= 277803737UL;
+    oldstate ^= oldstate >> b22;
+    pos[2] = ymin + (ymax-ymin)*((fpdtype_t)oldstate * tbc);
+    
+    oldstate = newstate;
+    newstate = (oldstate * 747796405UL) + 2891336453UL;
+    rshift = oldstate >> (b32 - opbits);
+    oldstate ^= oldstate >> (opbits + rshift);
+    oldstate *= 277803737UL;
+    oldstate ^= oldstate >> b22;
+    epscomp = oldstate % 8;
 
-          arg = 0.0;
-          % for j in range(ndims):
-            delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);
-            arg += fac*delta2[${j}];
-          % endfor
+    arg = 0.0;
+    % for j in range(ndims):
+      delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);
+      arg += fac*delta2[${j}];
+    % endfor
 
-          g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? fac2*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0;
-          
-          eps[0] = (epscomp & 1) ? -1 : 1;
-          eps[1] = (epscomp & 2) ? -1 : 1;
-          eps[2] = (epscomp & 4) ? -1 : 1;
-             
-          % for j in range(ndims): 
-            utilde[${j}] += eps[${j}]*g;
-          % endfor
-      }
-  }
+    g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? pos[0] <= xmax ? fac2*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0 : 0.0;
+    
+    eps[0] = (epscomp & 1) ? -1 : 1;
+    eps[1] = (epscomp & 2) ? -1 : 1;
+    eps[2] = (epscomp & 4) ? -1 : 1;
+       
+    % for j in range(ndims): 
+      utilde[${j}] += eps[${j}]*g;
+    % endfor
+  % endfor
   
   % for i in range(ndims): 
     utilde[${i}] *= rootrs;
