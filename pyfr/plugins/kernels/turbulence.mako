@@ -65,7 +65,7 @@
     oldstate ^= oldstate >> (opbits + rshift);
     oldstate *= 277803737UL;
     oldstate ^= oldstate >> b22;
-    pos[2] = ymin + (ymax-ymin)*((fpdtype_t)oldstate * tbc);
+    pos[2] = zmin + (zmax-zmin)*((fpdtype_t)oldstate * tbc);
     
     oldstate = newstate;
     newstate = (oldstate * 747796405UL) + 2891336453UL;
