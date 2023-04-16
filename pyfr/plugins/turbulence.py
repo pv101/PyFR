@@ -131,6 +131,26 @@ class Turbulence(BasePlugin):
                 eps = 1.0*pcg32rng.randint(0,8)
                 if tinit+((xmax-xmin)/ubar) >= self.tbegin and tinit <= self.tend:
                     xtemp.append(((yinit,zinit),tinit,state))
+                    if yinit < ymin + ls:
+                        xtemp.append (((yinit + (ymax-ymin), zinit), tinit, state))
+                        if zinit < zmin + ls:
+                            xtemp.append (((yinit, zinit + (zmax-zmin)), tinit, state))
+                            xtemp.append (((yinit + (ymax-ymin), zinit + (zmax-zmin)), tinit, state))
+                        elif zinit > zmax - ls:
+                            xtemp.append (((yinit, zinit - (zmax-zmin)), tinit, state))
+                            xtemp.append (((yinit + (ymax-ymin), zinit - (zmax-zmin)), tinit, state))        
+                    elif yinit > ymax - ls:
+                        xtemp.append (((yinit - (ymax-ymin), zinit), tinit, state))
+                        if zinit < zmin + ls:
+                            xtemp.append (((yinit, zinit + (zmax-zmin)), tinit, state))
+                            xtemp.append (((yinit - (ymax-ymin), zinit + (zmax-zmin)), tinit, state))
+                        elif zinit > zmax - ls:
+                            xtemp.append (((yinit, zinit - (zmax-zmin)), tinit, state))
+                            xtemp.append (((yinit - (ymax-ymin), zinit - (zmax-zmin)), tinit, state))    
+                    elif zinit < zmin + ls:
+                        xtemp.append (((yinit, zinit + (zmax-zmin)), tinit, state))
+                    elif zinit > zmax - ls:
+                        xtemp.append (((yinit, zinit - (zmax-zmin)), tinit, state))
                 tinits[vid] += (xmax-xmin)/ubar
             if all(tinit > self.tend for tinit in tinits):
                 break

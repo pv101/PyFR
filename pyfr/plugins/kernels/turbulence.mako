@@ -13,6 +13,7 @@
   fpdtype_t invsigma3 = ${1.0/(sigma*sigma*sigma)};
   fpdtype_t ubar = ${ubar};
   fpdtype_t pos[${ndims}];
+  fpdtype_t posper[2][${ndims}];
   fpdtype_t ttploc[${ndims}];
   fpdtype_t eps[${ndims}];
   fpdtype_t delta2[${ndims}];
@@ -32,7 +33,7 @@
   fpdtype_t zmax = ${zmax};
   fpdtype_t fac = ${-0.5/(sigma*sigma*ls*ls)};
   fpdtype_t fac2 = ${(gc*gc*gc)/(sigma*sigma*sigma)};
-
+  
   fpdtype_t tbc = 2.3283064365386962890625e-10;
   
   uint32_t oldstate;
@@ -42,6 +43,9 @@
   uint8_t b32 = 32;
   uint8_t opbits = 4;
 
+  //fpdtype_t delsigny;
+  fpdtype_t delsignz;
+
   int epscomp;
   
   % for i, r in enumerate(rot):
@@ -49,7 +53,7 @@
   % endfor
 
   % for i in range(nvmax):
-    pos[0] = xmin + (t-tinit[${i}][0])*ubar;
+    posper[0][0] = xmin + (t-tinit[${i}][0])*ubar;
     
     oldstate = state[${i}][0];
     newstate = (oldstate * 747796405UL) + 2891336453UL;
@@ -57,7 +61,7 @@
     oldstate ^= oldstate >> (opbits + rshift);
     oldstate *= 277803737UL;
     oldstate ^= oldstate >> b22;
-    pos[1] = ymin + (ymax-ymin)*((fpdtype_t)oldstate * tbc);
+    posper[0][1] = ymin + (ymax-ymin)*((fpdtype_t)oldstate * tbc);
     
     oldstate = newstate;
     newstate = (oldstate * 747796405UL) + 2891336453UL;
@@ -65,7 +69,7 @@
     oldstate ^= oldstate >> (opbits + rshift);
     oldstate *= 277803737UL;
     oldstate ^= oldstate >> b22;
-    pos[2] = ymin + (ymax-ymin)*((fpdtype_t)oldstate * tbc);
+    posper[0][2] = zmin + (zmax-zmin)*((fpdtype_t)oldstate * tbc);
     
     oldstate = newstate;
     newstate = (oldstate * 747796405UL) + 2891336453UL;
@@ -74,22 +78,45 @@
     oldstate *= 277803737UL;
     oldstate ^= oldstate >> b22;
     epscomp = oldstate % 8;
-
-    arg = 0.0;
-    % for j in range(ndims):
-      delta2[${j}] = (pos[${j}]-ttploc[${j}])*(pos[${j}]-ttploc[${j}]);
-      arg += fac*delta2[${j}];
-    % endfor
-
-    g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? pos[0] <= xmax ? fac2*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0 : 0.0;
+    
+    //delsigny = posper[1][0] < 0.5*(ymax-ymin) ? (ymax-ymin) : -(ymax-ymin);
+    
+    delsignz = posper[2][0] < 0.5*(zmax-zmin) ? (zmax-zmin) : -(zmax-zmin);
+    
+    posper[1][0] = posper[0][0];
+    posper[1][1] = posper[0][1];
+    posper[1][2] = posper[0][2] + delsignz;
+    
+    //posper[0][1] = posper[0][0];
+    //posper[0][2] = posper[0][0];
+    //posper[0][3] = posper[0][0];
+    
+    //posper[1][1] = posper[1][0] + delsigny;
+    //posper[1][2] = posper[1][0];
+    //posper[1][3] = posper[1][0] + delsigny;
+    
+    //posper[2][1] = posper[2][0];
+    //posper[2][2] = posper[2][0] + delsignz;
+    //posper[2][3] = posper[2][0] + delsignz;
     
     eps[0] = (epscomp & 1) ? -1 : 1;
     eps[1] = (epscomp & 2) ? -1 : 1;
     eps[2] = (epscomp & 4) ? -1 : 1;
-       
-    % for j in range(ndims): 
-      utilde[${j}] += eps[${j}]*g;
+    
+    % for k in range(2): 
+      arg = 0.0;
+      % for j in range(ndims):
+        delta2[${j}] = (posper[${k}][${j}]-ttploc[${j}])*(posper[${k}][${j}]-ttploc[${j}]);
+        arg += fac*delta2[${j}];
+      % endfor
+
+      g = delta2[0] < ls2 ? delta2[1] < ls2 ? delta2[2] < ls2 ? posper[0][0] <= xmax ? fac2*${pyfr.polyfit(lambda x: 2.718281828459045**x, 0, 1, 8, 'arg')} : 0.0 : 0.0 : 0.0 : 0.0;
+
+      % for j in range(ndims): 
+        utilde[${j}] += eps[${j}]*g;
+      % endfor
     % endfor
+    
   % endfor
   
   % for i in range(ndims): 
