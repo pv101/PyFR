@@ -1,6 +1,6 @@
 <%namespace module='pyfr.backends.base.makoutil' name='pyfr'/>
 
-<%pyfr:macro name='inviscid_flux' params='s, f, p, v'>
+<%pyfr:macro name='inviscid_flux' params='s, f, p, v' externs='t'>
     fpdtype_t invrho = 1.0/s[0], E = s[${nvars - 1}];
 
     // Compute the velocities
@@ -15,7 +15,7 @@
 
     // Density and energy fluxes
 % for i in range(ndims):
-    f[${i}][0] = rhov[${i}];
+    f[${i}][0] = rhov[${i}]*sin(t);
     f[${i}][${nvars - 1}] = (E + p)*v[${i}];
 % endfor
 

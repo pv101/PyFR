@@ -5,7 +5,6 @@
 % endfor
 
 <%pyfr:kernel name='negdivconf' ndim='2'
-              t='scalar fpdtype_t'
               tdivtconf='inout fpdtype_t[${str(nvars)}]'
               ploc='in fpdtype_t[${str(ndims)}]'
               u='in fpdtype_t[${str(nvars)}]'

@@ -98,6 +98,9 @@ def macro(context, name, params, externs=''):
     params = [p.strip() for p in params.split(',')]
     externs = [e.strip() for e in externs.split(',')] if externs else []
 
+    #print(name)
+    #print(externs)
+
     # Capture the function body
     body = capture(context, context['caller'].body)
 
@@ -117,6 +120,9 @@ def macro(context, name, params, externs=''):
 def expand(context, name, /, *args, **kwargs):
     # Get the macro parameter list and the body
     mparams, mexterns, body = context['_macros'][name]
+
+    print(name)
+    print(mexterns)
 
     # Parse the parameter list
     params = dict(zip(mparams, args))

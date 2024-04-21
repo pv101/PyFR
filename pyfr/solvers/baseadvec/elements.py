@@ -10,6 +10,8 @@ class BaseAdvectionElements(BaseElements):
         self._external_args = {}
         self._external_vals = {}
 
+        self._set_external('t', 'scalar fpdtype_t')
+
         # Source term kernel arguments
         self._srctplargs = {
             'ndims': self.ndims,
