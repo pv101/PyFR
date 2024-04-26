@@ -15,7 +15,7 @@
 
     // Density and energy fluxes
 % for i in range(ndims):
-    f[${i}][0] = rhov[${i}]*sin(t);
+    f[${i}][0] = rhov[${i}]*0.1*(1+sin(t));
     f[${i}][${nvars - 1}] = (E + p)*v[${i}];
 % endfor
 

@@ -114,8 +114,7 @@ class BaseAdvectionBCInters(BaseInters):
         self._scal_lhs = self._scal_view(lhs, 'get_scal_fpts_for_inter')
         self._pnorm_lhs = self._const_mat(lhs, 'get_pnorms_for_inter')
 
-        # Make the simulation time available inside kernels
-        self._set_external('t', 'scalar fpdtype_t')
+        
 
         if cfg.get('solver', 'shock-capturing') == 'entropy-filter':
             self._entmin_lhs = self._view(lhs, 'get_entmin_bc_fpts_for_inter')

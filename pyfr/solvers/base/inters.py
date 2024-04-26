@@ -40,6 +40,9 @@ class BaseInters:
         self._external_args = {}
         self._external_vals = {}
 
+        # Make the simulation time available inside kernels
+        self._set_external('t', 'scalar fpdtype_t')
+
     def prepare(self, t):
         pass
 

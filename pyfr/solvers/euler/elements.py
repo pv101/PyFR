@@ -181,6 +181,9 @@ class EulerElements(BaseFluidElements, BaseAdvectionElements):
             'jac_exprs': self.basis.jac_exprs
         }
 
+        print("hello")
+        print(self._external_args)
+
         # Helpers
         tdisf = []
         c, l = 'curved', 'linear'
@@ -190,27 +193,27 @@ class EulerElements(BaseFluidElements, BaseAdvectionElements):
         if c in r and 'flux' not in self.antialias:
             tdisf.append(lambda uin: self._be.kernel(
                 'tflux', tplargs=tplargs | {'ktype': 'curved'},
-                dims=[self.nupts, r[c]], u=s(self.scal_upts[uin], c),
+                dims=[self.nupts, r[c]], extrns=self._external_args, u=s(self.scal_upts[uin], c),
                 f=s(self._vect_upts, c), smats=self.curved_smat_at('upts')
             ))
         elif c in r:
             tdisf.append(lambda: self._be.kernel(
                 'tflux', tplargs=tplargs | {'ktype': 'curved'},
-                dims=[self.nqpts, r[c]], u=s(self._scal_qpts, c),
+                dims=[self.nqpts, r[c]], extrns=self._external_args, u=s(self._scal_qpts, c),
                 f=s(self._vect_qpts, c), smats=self.curved_smat_at('qpts')
             ))
 
         if l in r and 'flux' not in self.antialias:
             tdisf.append(lambda uin: self._be.kernel(
                 'tflux', tplargs=tplargs | {'ktype': 'linear'},
-                dims=[self.nupts, r[l]], u=s(self.scal_upts[uin], l),
+                dims=[self.nupts, r[l]], extrns=self._external_args, u=s(self.scal_upts[uin], l),
                 f=s(self._vect_upts, l), verts=self.ploc_at('linspts', l),
                 upts=self.upts
             ))
         elif l in r:
             tdisf.append(lambda: self._be.kernel(
                 'tflux', tplargs=tplargs | {'ktype': 'linear'},
-                dims=[self.nqpts, r[l]], u=s(self._scal_qpts, l),
+                dims=[self.nqpts, r[l]], extrns=self._external_args, u=s(self._scal_qpts, l),
                 f=s(self._vect_qpts, l), verts=self.ploc_at('linspts', l),
                 upts=self.qpts
             ))

@@ -52,8 +52,11 @@ class EulerIntInters(TplargsMixin, FluidIntIntersMixin,
 
         self._be.pointwise.register('pyfr.solvers.euler.kernels.intcflux')
 
+        print('commflux')
+        print(self._external_args)
+        
         self.kernels['comm_flux'] = lambda: self._be.kernel(
-            'intcflux', tplargs=self._tplargs, dims=[self.ninterfpts],
+            'intcflux', tplargs=self._tplargs, dims=[self.ninterfpts], extrns=self._external_args,
             ul=self._scal_lhs, ur=self._scal_rhs, nl=self._pnorm_lhs
         )
 
@@ -66,7 +69,7 @@ class EulerMPIInters(TplargsMixin, FluidMPIIntersMixin,
         self._be.pointwise.register('pyfr.solvers.euler.kernels.mpicflux')
 
         self.kernels['comm_flux'] = lambda: self._be.kernel(
-            'mpicflux', self._tplargs, dims=[self.ninterfpts],
+            'mpicflux', self._tplargs, dims=[self.ninterfpts], extrns=self._external_args,
             ul=self._scal_lhs, ur=self._scal_rhs, nl=self._pnorm_lhs
         )
 
@@ -80,7 +83,7 @@ class EulerBaseBCInters(TplargsMixin, BaseAdvectionBCInters):
         self._tplargs |= dict(bctype=self.type, ninters=self.ninters)
 
         self.kernels['comm_flux'] = lambda: self._be.kernel(
-            'bccflux', tplargs=self._tplargs, dims=[self.ninterfpts],
+            'bccflux', tplargs=self._tplargs, dims=[self.ninterfpts], 
             extrns=self._external_args, ul=self._scal_lhs, nl=self._pnorm_lhs,
             **self._external_vals
         )
