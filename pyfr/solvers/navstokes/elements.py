@@ -67,7 +67,7 @@ class NavierStokesElements(BaseFluidElements, BaseAdvectionDiffusionElements):
             if c in r:
                 tdisf.append(lambda uin: self._be.kernel(
                     'tflux', tplargs=tplargs | {'ktype': 'curved-fused'},
-                    dims=[self.nupts, r[c]], u=s(self.scal_upts[uin], c),
+                    dims=[self.nupts, r[c]], extrns=self._external_args, u=s(self.scal_upts[uin], c),
                     artvisc=s(av, c), f=s(self._vect_upts, c),
                     gradu=s(self._grad_upts, c),
                     rcpdjac=self.rcpdjac_at('upts', 'curved'),
@@ -76,7 +76,7 @@ class NavierStokesElements(BaseFluidElements, BaseAdvectionDiffusionElements):
             if l in r:
                 tdisf.append(lambda uin: self._be.kernel(
                     'tflux', tplargs=tplargs | {'ktype': 'linear-fused'},
-                    dims=[self.nupts, r[l]], u=s(self.scal_upts[uin], l),
+                    dims=[self.nupts, r[l]], extrns=self._external_args, u=s(self.scal_upts[uin], l),
                     artvisc=s(av, l), f=s(self._vect_upts, l),
                     gradu=s(self._grad_upts, l),
                     verts=self.ploc_at('linspts', l), upts=self.upts
@@ -91,14 +91,14 @@ class NavierStokesElements(BaseFluidElements, BaseAdvectionDiffusionElements):
             if c in r:
                 tdisf.append(lambda: self._be.kernel(
                     'tflux', tplargs=tplargs | {'ktype': 'curved'},
-                    dims=[self.nqpts, r[c]], u=s(self._scal_qpts, c),
+                    dims=[self.nqpts, r[c]], extrns=self._external_args, u=s(self._scal_qpts, c),
                     f=s(self._vect_qpts, c), artvisc=s(av, c),
                     smats=self.curved_smat_at('qpts')
                 ))
             if l in r:
                 tdisf.append(lambda: self._be.kernel(
                     'tflux', tplargs=tplargs | {'ktype': 'linear'},
-                    dims=[self.nqpts, r[l]], u=s(self._scal_qpts, l),
+                    dims=[self.nqpts, r[l]], extrns=self._external_args, u=s(self._scal_qpts, l),
                     f=s(self._vect_qpts, l), artvisc=s(av, l),
                     verts=self.ploc_at('linspts', l), upts=self.qpts
                 ))
