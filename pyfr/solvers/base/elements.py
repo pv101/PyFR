@@ -251,8 +251,10 @@ class BaseElements:
 
     @memoize
     def opmat(self, expr):
-        return self._be.const_matrix(self.basis.opmat(expr),
-                                     tags={expr, 'align'})
+        m = self.basis.opmat(expr, self)
+        if m.ndim == 3:
+            m = m.transpose(1, 2, 0)
+        return self._be.const_matrix(m, tags={expr, 'align'})
 
     def sliceat(fn):
         @memoize

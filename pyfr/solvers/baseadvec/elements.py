@@ -67,6 +67,9 @@ class BaseAdvectionElements(BaseElements):
             'pyfr.solvers.baseadvec.kernels.evalsrcmacros'
         )
 
+        self._be.pointwise.register('pyfr.solvers.baseadvec.kernels.batchmm')
+
+
         # What anti-aliasing options we're running with
         fluxaa = 'flux' in self.antialias
 
@@ -82,6 +85,8 @@ class BaseAdvectionElements(BaseElements):
                 out=self._scal_qpts
             )
 
+        #print(self.opmat('M111 - M3*M222').ioshape)
+
         # First flux correction kernel
         if fluxaa and self.basis.order > 0:
             kernels['tdivtpcorf'] = lambda fout: self._be.kernel(
@@ -90,8 +95,9 @@ class BaseAdvectionElements(BaseElements):
             )
         elif self.basis.order > 0:
             kernels['tdivtpcorf'] = lambda fout: self._be.kernel(
-                'mul', self.opmat('M1 - M3*M2'), self._vect_upts,
-                out=self.scal_upts[fout]
+                'batchmm', dims=[self.neles],
+                tplargs={'na': self.nupts, 'nb': self.nupts*self.ndims, 'nvars': self.nvars},
+                A=self.opmat('M111 - M3*M222'), u=self._vect_upts, v=self.scal_upts[fout]
             )
 
         # Second flux correction kernel

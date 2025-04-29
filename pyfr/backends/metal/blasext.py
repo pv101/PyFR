@@ -5,6 +5,12 @@ from pyfr.backends.metal.util import call_
 
 
 class MetalBlasExtKernels(MetalKernelProvider):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Register our pointwise kernel
+        #
+
     def axnpby(self, *arr, subdims=None):
         if any(arr[0].traits != x.traits for x in arr[1:]):
             raise ValueError('Incompatible matrix types')
@@ -32,7 +38,7 @@ class MetalBlasExtKernels(MetalKernelProvider):
             def run(self, cbuf):
                 kern(cbuf, grid, tgrp, *kargs)
 
-        return AxnpbyKernel(mats=arr)
+        return AxnpbyKernel(mats=arr)        
 
     def copy(self, dst, src):
         if dst.traits != src.traits:

@@ -78,13 +78,14 @@ class BaseShape:
             raise ValueError('Invalid number of shape points')
 
     @clean
-    def opmat(self, expr):
+    def opmat(self, expr, eles):
         expr = expr.lower().replace('*', '@')
 
         if not re.match(r'[m0-9\-+@() ]+$', expr):
             raise ValueError('Invalid operator matrix expression')
 
         mats = {m: getattr(self, m) for m in re.findall(r'm\d+', expr)}
+        mats = {m: n(eles) if callable(n) else n for m, n in mats.items()}
         return eval(expr, {'__builtins__': None}, mats)
 
     @cached_property
@@ -96,10 +97,33 @@ class BaseShape:
         m = np.rollaxis(self.ubasis.jac_nodal_basis_at(self.upts), 2)
         return m.reshape(self.nupts, -1)
 
+    def m111(self, eles):
+        m = np.rollaxis(self.ubasis.jac_nodal_basis_at(self.upts), 2)
+        s = eles.smat_at_np('upts')
+        c = np.einsum('ijkl,jin->ljkn', s, m) # contract over ndims etc.
+        return c.reshape(eles.neles, self.nupts, -1)
+
+        #(ndims, nupts, ndims, neles) , (nupts, ndims, nupts) -> (nupts, ndims, neles, nupts, nupts)
+        #c = np.einsum('ijkl,min->jklmn', s, m)
+        #(nupts, ndims, neles, nupts, nupts) -> (nupts, ndims, neles, nupts)
+        #d = np.einsum('jkljn->jkln', c)
+        #(nupts, ndims, neles, nupts) -> (neles, nupts, ndims, nupts) 
+        #e = np.transpose(d, axes=(2, 0, 1, 3))
+
     @cached_property
     def m2(self):
         m = self.norm_fpts[..., None]*self.m0[:, None, :]
         return m.reshape(self.nfpts, -1)
+
+    def m222(self, eles):
+        m = self.norm_fpts[..., None]*self.m0[:, None, :]
+        s = eles.smat_at_np('fpts')
+        c = np.einsum('ijkl,jin->ljkn', s, m) # contract over ndims etc.
+        return c.reshape(eles.neles, self.nfpts, -1)
+
+        #c = np.einsum('ijkl,min->jklmn', s, m)
+        #d = np.einsum('jkljn->jkln', c)
+        #e = np.transpose(d, axes=(2, 0, 1, 3))
 
     @cached_property
     def m3(self):

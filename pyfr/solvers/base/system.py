@@ -49,6 +49,13 @@ class BaseSystem:
         # Retain the element map; this may be deleted by clients
         self.ele_map = elemap
 
+        #import h5py
+        #with h5py.File('mats4.h5', 'w') as f:
+        #    f['m1phys'] = elemap['quad'].basis.m1phys(elemap['quad'])
+        #    f['m1'] = elemap['quad'].basis.m1
+        #    f['m2phys'] = elemap['quad'].basis.m2phys(elemap['quad'])
+        #    f['m2'] = elemap['quad'].basis.m2
+
         # Get the banks, types, num DOFs and shapes of the elements
         self.ele_banks = [e.scal_upts for e in eles]
         self.ele_types = list(elemap)

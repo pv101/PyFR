@@ -2,8 +2,10 @@ import numpy as np
 
 from pyfr.backends.openmp.provider import OpenMPKernel, OpenMPKernelProvider
 
-
 class OpenMPBlasExtKernels(OpenMPKernelProvider):
+    
+
+
     def axnpby(self, *arr, subdims=None):
         if any(arr[0].traits != x.traits for x in arr[1:]):
             raise ValueError('Incompatible matrix types')
