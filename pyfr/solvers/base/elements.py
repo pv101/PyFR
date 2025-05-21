@@ -298,6 +298,7 @@ class BaseElements:
         djac = m0 @ djacs_mpts
 
         if np.any(djac < -1e-5):
+            print(djac)
             raise RuntimeError('Negative mesh Jacobians detected')
 
         return 1.0 / djac
